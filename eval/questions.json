@@ -1,0 +1,137 @@
+{
+  "dataset": "data/sample_sales.csv",
+  "created": "2026-11-13",
+  "purpose": "Fixed question set used to measure how reliably the investigator plans and selects tools. Expected answers were computed with the tools in src/tools.py and checked by hand, so they can be compared against the agent's output.",
+  "available_tools": [
+    "group_comparison",
+    "correlation",
+    "trend_over_time",
+    "find_outliers",
+    "value_counts_table",
+    "missing_by_group"
+  ],
+  "questions": [
+    {
+      "id": "Q01",
+      "question": "Which region has the highest average revenue per order?",
+      "expected_tool": "group_comparison",
+      "expected_params": { "group_column": "region", "value_column": "revenue", "metric": "mean" },
+      "expected_answer_hint": "East, with a mean of 912.01. Note the nuance: North has the highest median (544.38), so East's mean is inflated by a few very large orders.",
+      "notes": "Tests basic grouping plus awareness that mean and median can disagree."
+    },
+    {
+      "id": "Q02",
+      "question": "Compare total revenue by product.",
+      "expected_tool": "group_comparison",
+      "expected_params": { "group_column": "product", "value_column": "revenue", "metric": "sum" },
+      "expected_answer_hint": "Pro 49,148.60 from 61 orders; Enterprise 45,039.55 from only 30 orders; Basic 39,713.27 from 89 orders.",
+      "notes": "Totals hide per-order differences; Enterprise earns almost as much from far fewer orders."
+    },
+    {
+      "id": "Q03",
+      "question": "Is there a relationship between discount percentage and revenue?",
+      "expected_tool": "correlation",
+      "expected_params": { "columns": ["discount_pct", "revenue"] },
+      "expected_answer_hint": "r = -0.118, essentially no linear relationship. It must not be described as a strong effect.",
+      "notes": "Tests honest reporting of a weak result."
+    },
+    {
+      "id": "Q04",
+      "question": "How did monthly revenue change over time?",
+      "expected_tool": "trend_over_time",
+      "expected_params": { "date_column": "order_date", "value_column": "revenue", "freq": "ME" },
+      "expected_answer_hint": "Eight months. Rises from 13,921.07 in January to 19,733.21 in April, falls 32.1% in June, peaks at 20,024.78 in July, ends at 15,675.93 in August. Not a steady trend.",
+      "notes": "Tests period aggregation and reporting volatility rather than a single direction."
+    },
+    {
+      "id": "Q05",
+      "question": "Which orders are unusually large by revenue?",
+      "expected_tool": "find_outliers",
+      "expected_params": { "column": "revenue", "multiplier": 1.5 },
+      "expected_answer_hint": "10 outliers above the upper bound of 2,084.13, led by ORD-0113 at 4,732.80.",
+      "notes": "Tests IQR outlier detection and quoting the bound as evidence."
+    },
+    {
+      "id": "Q06",
+      "question": "Which sales channel is used most often?",
+      "expected_tool": "value_counts_table",
+      "expected_params": { "column": "channel", "top_n": 10 },
+      "expected_answer_hint": "Online: 94 orders (52.2%), then Retail 66 (36.7%), Partner 20 (11.1%).",
+      "notes": "Simple frequency question; a fast baseline check."
+    },
+    {
+      "id": "Q07",
+      "question": "Which product is ordered most often?",
+      "expected_tool": "value_counts_table",
+      "expected_params": { "column": "product", "top_n": 10 },
+      "expected_answer_hint": "Basic: 89 orders (49.4%), then Pro 61 (33.9%), Enterprise 30 (16.7%).",
+      "notes": "Checks the agent picks a frequency tool, not a grouping tool."
+    },
+    {
+      "id": "Q08",
+      "question": "Which region has the highest share of missing satisfaction scores?",
+      "expected_tool": "missing_by_group",
+      "expected_params": { "group_column": "region", "target_column": "satisfaction" },
+      "expected_answer_hint": "West: 7 of 39 rows missing (17.9%), against 2.1% or less elsewhere.",
+      "notes": "Tests missingness analysis grouped by category."
+    },
+    {
+      "id": "Q09",
+      "question": "Do larger discounts come with more units sold?",
+      "expected_tool": "correlation",
+      "expected_params": { "columns": ["discount_pct", "units"] },
+      "expected_answer_hint": "r = 0.049, no meaningful relationship. The correct answer is that the data does not support the idea.",
+      "notes": "Tests resistance to confirming a plausible-sounding hypothesis."
+    },
+    {
+      "id": "Q10",
+      "question": "What is the average satisfaction score by product?",
+      "expected_tool": "group_comparison",
+      "expected_params": { "group_column": "product", "value_column": "satisfaction", "metric": "mean" },
+      "expected_answer_hint": "Pro 4.289, Basic 4.197, Enterprise 4.144. The spread is under 0.15 and missing values reduce the counts.",
+      "notes": "Tests reporting a difference that is real but tiny, plus awareness of missing values."
+    },
+    {
+      "id": "Q11",
+      "question": "Which month had the highest total revenue?",
+      "expected_tool": "trend_over_time",
+      "expected_params": { "date_column": "order_date", "value_column": "revenue", "freq": "ME" },
+      "expected_answer_hint": "July 2025, with 20,024.78.",
+      "notes": "Requires computing the trend and then selecting the maximum."
+    },
+    {
+      "id": "Q12",
+      "question": "Are units and revenue correlated?",
+      "expected_tool": "correlation",
+      "expected_params": { "columns": ["units", "revenue"] },
+      "expected_answer_hint": "r = 0.703, a strong positive relationship, which is expected because revenue is calculated from units.",
+      "notes": "Tests whether the agent notices a near-mechanical relationship instead of treating it as an insight."
+    },
+    {
+      "id": "Q13",
+      "question": "Which channel has the highest median revenue per order?",
+      "expected_tool": "group_comparison",
+      "expected_params": { "group_column": "channel", "value_column": "revenue", "metric": "median" },
+      "expected_answer_hint": "Retail 461.34, then Partner 442.59, then Online 430.74. By mean, Online ranks first instead, so the choice of statistic matters.",
+      "notes": "Deliberate mean-versus-median trap."
+    },
+    {
+      "id": "Q14",
+      "question": "Which region grew fastest between January and August?",
+      "expected_tool": null,
+      "expected_params": {},
+      "expected_behavior": "refuse_or_explain",
+      "expected_answer_hint": "trend_over_time cannot split by group, so no tool answers this. The correct behaviour is to say the analysis is not supported yet, not to guess.",
+      "notes": "Out-of-scope question used to test graceful refusal. A grouped-trend tool is a possible Day 6 improvement."
+    },
+    {
+      "id": "Q15",
+      "question": "Which customer segment is the most profitable?",
+      "expected_tool": null,
+      "expected_params": {},
+      "expected_behavior": "refuse_or_explain",
+      "expected_answer_hint": "The dataset has no customer or segment column. The correct behaviour is to refuse and list the available columns.",
+      "notes": "Tests that the agent checks the schema before planning."
+    }
+  ]
+}

@@ -4,7 +4,7 @@
 
 Data Detective is an AI-powered application for investigating datasets with natural-language questions. Upload a CSV, ask a question, and receive findings backed by calculations performed in Python — not invented by a language model.
 
-> **Status:** Day 2 of the DDS build. CSV loading, dataset profiling and the upload interface are working and tested. The LLM planning layer is not connected yet.
+> **Status:** Day 3 of the DDS build. CSV loading, profiling, six analytical tools and a 15-question evaluation set are working and tested (47 tests). The LLM planning layer is not connected yet.
 
 ## What works today
 
@@ -12,7 +12,24 @@ Data Detective is an AI-powered application for investigating datasets with natu
 - Input validation: empty files, non-UTF-8 files, malformed CSV, oversized datasets.
 - Dataset profiling computed with Pandas: shape, data types, missing values, unique counts, most common values, duplicate rows, numeric summary statistics.
 - Automatic data-quality warnings (columns with heavy missingness, constant columns, unnamed columns).
-- Unit tests for the profiling module (`pytest`).
+- Six deterministic analytical tools (see below) exposed through a tool registry.
+- A 15-question evaluation set with hand-checked expected answers (`eval/questions.json`).
+- Unit tests for the profiling and tools modules (`pytest`, 47 tests).
+
+## Analytical tools
+
+These are the agent's "hands": plain functions that compute results from the data. Each one validates its inputs and raises `ToolError` with a readable message when the request cannot be answered.
+
+| Tool | Question it answers |
+|---|---|
+| `group_comparison` | How does a numeric value compare across categories? (mean, median or sum) |
+| `correlation` | Do two numeric columns move together? |
+| `trend_over_time` | How does a numeric value change by day, week or month? |
+| `find_outliers` | Which values are unusually high or low? (IQR method) |
+| `value_counts_table` | How often does each value appear? |
+| `missing_by_group` | Where is data missing, and in which groups? |
+
+`TOOL_REGISTRY` describes each tool and its parameters in a machine-readable form, and `run_tool(name, df, **params)` executes one by name. This is the interface the investigator will hand to the language model, and it is also why the tools are separate from the UI and the LLM.
 
 ## Planned features
 
@@ -49,11 +66,17 @@ data-detective/
 ├── src/
 │   ├── __init__.py         # Marks src/ as a Python package
 │   ├── profiler.py         # CSV validation + profiling (no UI, no LLM)
+│   ├── tools.py            # Predefined analytical tools + registry
 │   ├── investigator.py     # Planned: agent planning and tool selection
 │   └── visualizer.py       # Planned: charts from computed results
 ├── tests/
-│   └── test_profiler.py    # Unit tests for src/profiler.py
-├── data/                   # Local sample datasets (never commit private data)
+│   ├── test_profiler.py    # Unit tests for src/profiler.py
+│   └── test_tools.py       # Unit tests for src/tools.py
+├── eval/
+│   └── questions.json      # Fixed question set with expected answers
+├── data/                   # Sample datasets (never commit private data)
+│   ├── sample_people.csv   # Small synthetic set with missing/duplicate values
+│   └── sample_sales.csv    # 180 synthetic orders with outliers and gaps
 ├── requirements.txt        # Pinned runtime dependencies
 ├── requirements-dev.txt    # Test-only dependencies
 ├── .env.example            # Template for local secrets (copy to .env)
@@ -143,7 +166,8 @@ Files are processed in memory. Uploaded datasets are not written to disk or perm
 - [x] Environment, repository and dependency pinning
 - [x] CSV loading and dataset profiling with tests
 - [x] Streamlit upload and profile interface
-- [ ] Predefined analytical tools (comparison, correlation, trend, anomaly)
+- [x] Predefined analytical tools (comparison, correlation, trend, outliers) with tests
+- [x] Fixed evaluation question set with expected answers
 - [ ] LLM planning with structured tool selection
 - [ ] Evidence validation and investigation report
 - [ ] Visualisations
