@@ -4,7 +4,7 @@
 
 Data Detective is an AI-powered application for investigating datasets with natural-language questions. Upload a CSV, ask a question, and receive findings backed by calculations performed in Python — not invented by a language model.
 
-> **Status:** Day 3 of the DDS build. CSV loading, profiling, six analytical tools and a 15-question evaluation set are working and tested (47 tests). The LLM planning layer is not connected yet.
+> **Status:** Day 3 of the DDS build. CSV loading, profiling, six analytical tools, a 15-question evaluation set and an isolated, live-tested Gemini REST client are working (100 tests). The agent planning layer is next.
 
 ## What works today
 
@@ -14,7 +14,8 @@ Data Detective is an AI-powered application for investigating datasets with natu
 - Automatic data-quality warnings (columns with heavy missingness, constant columns, unnamed columns).
 - Six deterministic analytical tools (see below) exposed through a tool registry.
 - A 15-question evaluation set with hand-checked expected answers (`eval/questions.json`).
-- Unit tests for the profiling and tools modules (`pytest`, 47 tests).
+- An isolated Gemini Flash client (`src/llm_client.py`) using plain HTTP, with typed errors for authentication, rate limits, timeouts and malformed responses, plus retries on transient overload.
+- Unit tests for the profiling, tools and LLM client modules (`pytest`, 100 tests).
 
 ## Analytical tools
 
@@ -54,9 +55,9 @@ These are the agent's "hands": plain functions that compute results from the dat
 | Pandas | Data manipulation and profiling | In use |
 | NumPy | Numerical operations | In use |
 | pytest | Unit tests | In use (development only) |
-| python-dotenv | Loading local secrets from `.env` | Installed, not used yet |
+| python-dotenv | Loading local secrets from `.env` | In use |
 | Matplotlib | Charts | Planned |
-| LLM API | Question interpretation and planning | Planned (provider undecided) |
+| Gemini Flash (REST) | Question interpretation and planning | Client built; planning layer next |
 
 ## Project structure
 
@@ -67,11 +68,14 @@ data-detective/
 │   ├── __init__.py         # Marks src/ as a Python package
 │   ├── profiler.py         # CSV validation + profiling (no UI, no LLM)
 │   ├── tools.py            # Predefined analytical tools + registry
+│   ├── llm_client.py       # Isolated Gemini REST client (the only LLM code)
 │   ├── investigator.py     # Planned: agent planning and tool selection
 │   └── visualizer.py       # Planned: charts from computed results
 ├── tests/
 │   ├── test_profiler.py    # Unit tests for src/profiler.py
-│   └── test_tools.py       # Unit tests for src/tools.py
+│   ├── test_tools.py       # Unit tests for src/tools.py
+│   ├── test_eval_set.py    # Guards eval/questions.json against drift
+│   └── test_llm_client.py  # Unit tests for src/llm_client.py (no network)
 ├── eval/
 │   └── questions.json      # Fixed question set with expected answers
 ├── data/                   # Sample datasets (never commit private data)
@@ -126,13 +130,35 @@ uv pip install -r requirements-dev.txt
 
 ## Configuration
 
-No configuration is required for profiling. When the LLM layer is added, API keys will be read from a local `.env` file:
+Profiling and the analytical tools need no configuration. The language model layer reads its settings from a local `.env` file:
 
 ```powershell
 Copy-Item .env.example .env
 ```
 
-`.env` is git-ignored. Only `.env.example` (with placeholder values) is committed.
+Then open `.env` and replace `replace-me` with a real Gemini API key. Get a free key at <https://aistudio.google.com/api-keys>.
+
+| Variable | Required | Purpose |
+|---|---|---|
+| `GEMINI_API_KEY` | Yes, for LLM features | Authenticates requests to the Gemini API |
+| `GEMINI_MODEL` | No | Overrides the model. Defaults to `gemini-3.6-flash` |
+| `GEMINI_TIMEOUT` | No | Seconds to wait per request. Defaults to `60` |
+
+`.env` is git-ignored. Only `.env.example` (with placeholder values) is committed. The key is read from the environment and is never written into the code or an error message.
+
+### Test the Gemini connection
+
+Before any agent behaviour is built, confirm the key, model and network work with one small round trip:
+
+```powershell
+.\.venv\Scripts\python.exe -m src.llm_client
+```
+
+The script prints the endpoint, model and timeout, lists the models the key can access, sends a one-line prompt and reports the reply, latency and token usage. It exits non-zero with a specific message if the key is missing, rejected, rate-limited or if the response is malformed.
+
+> **Why the timeout and the retries.** `gemini-3.6-flash` is a *reasoning* model: it thinks before answering, and the default thinking level is `MEDIUM`. On the free tier even a one-line reply can take a few seconds. The connection test therefore requests `thinkingLevel: "LOW"`, which cuts latency, and allows 60 seconds. Transient `429` and `5xx` responses are retried twice with a short backoff before failing.
+>
+> **Why `gemini-3.6-flash` and not `gemini-3.8-flash`.** The newest Flash returned HTTP 503 (overloaded) on the free tier during setup, while 3.6 Flash served reliably. Both are free of charge. Change `GEMINI_MODEL` if you want to try the newer model later.
 
 ## Input limits
 
@@ -168,6 +194,7 @@ Files are processed in memory. Uploaded datasets are not written to disk or perm
 - [x] Streamlit upload and profile interface
 - [x] Predefined analytical tools (comparison, correlation, trend, outliers) with tests
 - [x] Fixed evaluation question set with expected answers
+- [x] Isolated Gemini REST client with typed error handling and tests
 - [ ] LLM planning with structured tool selection
 - [ ] Evidence validation and investigation report
 - [ ] Visualisations
