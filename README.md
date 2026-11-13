@@ -4,7 +4,7 @@
 
 Data Detective is an AI-powered application for investigating datasets with natural-language questions. Upload a CSV, ask a question, and receive findings backed by calculations performed in Python — not invented by a language model.
 
-> **Status:** Day 3 of the DDS build. CSV loading, profiling, six analytical tools, a 15-question evaluation set and an isolated, live-tested Gemini REST client are working (100 tests). The agent planning layer is next.
+> **Status:** Day 3 of the DDS build. CSV loading, profiling, six analytical tools, an isolated live-tested Gemini REST client, and the **investigator** — the agent layer that plans an investigation, validates it, runs the tools and writes an evidence-backed report — are all working (165 tests). The investigator is verified live; a full scored baseline on the primary model is pending its free-tier daily quota reset (see `eval/baseline.md`).
 
 ## What works today
 
@@ -13,9 +13,10 @@ Data Detective is an AI-powered application for investigating datasets with natu
 - Dataset profiling computed with Pandas: shape, data types, missing values, unique counts, most common values, duplicate rows, numeric summary statistics.
 - Automatic data-quality warnings (columns with heavy missingness, constant columns, unnamed columns).
 - Six deterministic analytical tools (see below) exposed through a tool registry.
-- A 15-question evaluation set with hand-checked expected answers (`eval/questions.json`).
+- **An autonomous investigator** (`src/investigator.py`) that turns a natural-language question into a validated plan of tool calls, executes them in Python and reports evidence-backed findings.
+- A 15-question evaluation set with hand-checked expected answers (`eval/questions.json`) and a scoring script (`eval/score_investigator.py`).
 - An isolated Gemini Flash client (`src/llm_client.py`) using plain HTTP, with typed errors for authentication, rate limits, timeouts and malformed responses, plus retries on transient overload.
-- Unit tests for the profiling, tools and LLM client modules (`pytest`, 100 tests).
+- Unit tests for the profiling, tools, LLM client and investigator modules (`pytest`, 165 tests). Every investigator test runs offline against a fake model.
 
 ## Analytical tools
 
@@ -30,14 +31,56 @@ These are the agent's "hands": plain functions that compute results from the dat
 | `value_counts_table` | How often does each value appear? |
 | `missing_by_group` | Where is data missing, and in which groups? |
 
-`TOOL_REGISTRY` describes each tool and its parameters in a machine-readable form, and `run_tool(name, df, **params)` executes one by name. This is the interface the investigator will hand to the language model, and it is also why the tools are separate from the UI and the LLM.
+`TOOL_REGISTRY` describes each tool and its parameters in a machine-readable form, and `run_tool(name, df, **params)` executes one by name. This is the interface the investigator hands to the language model, and it is also why the tools are separate from the UI and the LLM.
+
+## The investigator
+
+`src/investigator.py` is the agent layer. It takes a question and a DataFrame and produces an `InvestigationReport`. The pipeline has one seam — an object exposing `generate_json(...)` — which is the real Gemini client in production and a fake in the tests.
+
+```
+question + dataset + profile
+        │
+        ▼
+ build_dataset_context()   schema, types, missing %, uniques, category values, date-like flags
+ build_tool_catalogue()    built from TOOL_REGISTRY, so the registry stays the single source of truth
+        │
+        ▼  Gemini (structured JSON output, MEDIUM thinking → LOW fallback on timeout)
+ validate_plan()           strict: known tool, known params, required present, types, enums,
+        │                  and every column name checked against the real dataset
+        ▼
+ run_plan()                run_tool() per step; a failing step is recorded, not raised
+        │
+        ▼
+ build_evidence()          deterministic Markdown tables — the ground truth
+        │
+        ▼  Gemini (structured JSON output)
+ InvestigationReport       computed findings and AI interpretation kept in separate fields
+```
+
+**Guarantees**
+
+- The model only ever chooses a tool name and parameters. It cannot run code, and `run_tool` is the only executor.
+- The model never sees the dataset itself — only its schema and profile. Prompts are capped in size and contain no whole columns.
+- A plan that names an unknown tool, an unknown parameter, a missing required parameter, a wrong type, or a column that does not exist is **rejected before anything runs** (`PlanError`).
+- `investigate()` never raises on expected failures. It returns a report whose `status` is `ok`, `partial` (findings computed but interpretation failed), `unsupported` or `error`, so a UI can always render something honest.
+- The report separates **Findings (computed in Python)** from the **Answer (AI interpretation)** in distinct sections, and flags any statistical-looking number in the narrative that cannot be matched to a computed value.
+
+### Run the evaluation
+
+The scoring script plans every question in `eval/questions.json` and compares the chosen tool and parameters with the hand-checked expectations. It measures planning only (tool selection), which is the part the exam set was designed to test.
+
+```powershell
+.\.venv\Scripts\python.exe eval\score_investigator.py
+```
+
+Use `--model <name>` to score a different model and `--out <path>` to choose where the report is written. The results are recorded in `eval/baseline.md`.
+
+> **A full investigation costs two requests** (one to plan, one to interpret). On the free tier `gemini-3.6-flash` allows 20 requests per day, so roughly ten complete investigations per day. The scorer pauses between questions to respect the per-minute limit.
 
 ## Planned features
 
-- **Autonomous investigation:** interpret a question, plan steps and select predefined analytical tools.
 - **Visualisations:** charts built from actual computed results.
-- **Evidence-backed insights:** explanations that cite the calculations behind them.
-- **Structured report:** plan, findings, evidence and limitations in one view.
+- **Structured report in the app:** wire the investigator into the Streamlit interface so a question typed in the browser returns a full report.
 
 ## Project goals
 
@@ -57,7 +100,7 @@ These are the agent's "hands": plain functions that compute results from the dat
 | pytest | Unit tests | In use (development only) |
 | python-dotenv | Loading local secrets from `.env` | In use |
 | Matplotlib | Charts | Planned |
-| Gemini Flash (REST) | Question interpretation and planning | Client built; planning layer next |
+| Gemini Flash (REST) | Question interpretation and planning | In use |
 
 ## Project structure
 
@@ -69,15 +112,19 @@ data-detective/
 │   ├── profiler.py         # CSV validation + profiling (no UI, no LLM)
 │   ├── tools.py            # Predefined analytical tools + registry
 │   ├── llm_client.py       # Isolated Gemini REST client (the only LLM code)
-│   ├── investigator.py     # Planned: agent planning and tool selection
+│   ├── investigator.py     # Agent: plan -> validate -> execute -> evidence report
 │   └── visualizer.py       # Planned: charts from computed results
 ├── tests/
 │   ├── test_profiler.py    # Unit tests for src/profiler.py
 │   ├── test_tools.py       # Unit tests for src/tools.py
 │   ├── test_eval_set.py    # Guards eval/questions.json against drift
-│   └── test_llm_client.py  # Unit tests for src/llm_client.py (no network)
+│   ├── test_llm_client.py  # Unit tests for src/llm_client.py (no network)
+│   └── test_investigator.py# Unit tests for src/investigator.py (no network)
 ├── eval/
-│   └── questions.json      # Fixed question set with expected answers
+│   ├── questions.json      # Fixed question set with expected answers
+│   ├── score_investigator.py  # Scores tool selection against the question set
+│   ├── baseline.md         # Primary-model baseline and how it was measured
+│   └── baseline-gemini-3.1-flash-lite.md  # Backup-model baseline (11/15)
 ├── data/                   # Sample datasets (never commit private data)
 │   ├── sample_people.csv   # Small synthetic set with missing/duplicate values
 │   └── sample_sales.csv    # 180 synthetic orders with outliers and gaps
@@ -159,6 +206,8 @@ The script prints the endpoint, model and timeout, lists the models the key can 
 > **Why the timeout and the retries.** `gemini-3.6-flash` is a *reasoning* model: it thinks before answering, and the default thinking level is `MEDIUM`. On the free tier even a one-line reply can take a few seconds. The connection test therefore requests `thinkingLevel: "LOW"`, which cuts latency, and allows 60 seconds. Transient `429` and `5xx` responses are retried twice with a short backoff before failing.
 >
 > **Why `gemini-3.6-flash` and not `gemini-3.8-flash`.** The newest Flash returned HTTP 503 (overloaded) on the free tier during setup, while 3.6 Flash served reliably. Both are free of charge. Change `GEMINI_MODEL` if you want to try the newer model later.
+>
+> **Free-tier daily quota.** `gemini-3.6-flash` allows **20 requests per day** on the free tier, and a full investigation uses two (plan + interpret). A full 15-question scoring run needs more than one day's budget, so the baseline is built up across runs. The client retries transient `429`/`5xx` responses with backoff and reports a daily-quota `429` as a clear `LLMRateLimitError` rather than a crash.
 
 ## Input limits
 
@@ -195,9 +244,10 @@ Files are processed in memory. Uploaded datasets are not written to disk or perm
 - [x] Predefined analytical tools (comparison, correlation, trend, outliers) with tests
 - [x] Fixed evaluation question set with expected answers
 - [x] Isolated Gemini REST client with typed error handling and tests
-- [ ] LLM planning with structured tool selection
-- [ ] Evidence validation and investigation report
+- [x] LLM planning with structured tool selection
+- [x] Evidence validation and investigation report
 - [ ] Visualisations
+- [ ] Wire the investigator into the Streamlit interface
 - [ ] Deployment
 
 ## Challenge
