@@ -19,6 +19,7 @@ from src.investigator import (
     INTERPRETATION_SCHEMA,
     MAX_STEPS,
     PLAN_SCHEMA,
+    PLAN_SYSTEM_INSTRUCTION,
     PlanError,
     build_dataset_context,
     build_evidence,
@@ -32,7 +33,7 @@ from src.investigator import (
     run_plan,
     validate_plan,
 )
-from src.llm_client import LLMError, LLMTimeoutError
+from src.llm_client import LLMError, LLMResponseError, LLMTimeoutError
 from src.profiler import load_csv
 from src.tools import TOOL_REGISTRY
 
@@ -203,6 +204,21 @@ def test_plan_prompt_never_contains_the_whole_column(df):
     prompt = build_plan_prompt("anything", df)
 
     assert "ORD-0004" not in prompt
+
+
+def test_plan_system_instruction_demands_an_explicit_metric():
+    # Added on Day 4 after the backup model answered "total revenue by product"
+    # with the default mean, because it left metric unset.
+    assert "metric" in PLAN_SYSTEM_INSTRUCTION
+    assert "sum" in PLAN_SYSTEM_INSTRUCTION
+    assert "median" in PLAN_SYSTEM_INSTRUCTION
+
+
+def test_plan_system_instruction_forbids_substituting_a_missing_column():
+    # Added on Day 4 after the model mapped "customer segment" onto "channel".
+    lowered = PLAN_SYSTEM_INSTRUCTION.lower()
+    assert "unsupported" in lowered
+    assert "never substitute" in lowered
 
 
 def test_plan_schema_restricts_tools_to_the_registry():
@@ -735,6 +751,32 @@ def test_investigate_reports_a_timeout_when_fallback_is_disabled(df):
 
     assert report.status == "error"
     assert len(client.calls) == 1
+
+
+def test_investigate_retries_once_on_a_malformed_response(df):
+    # Added on Day 4 after a live run returned an unterminated JSON string.
+    client = FakeClient(
+        LLMResponseError("The model did not return valid JSON"),
+        plan_payload(step("value_counts_table", column="region")),
+        interp_payload(),
+    )
+
+    report = investigate("Which region is most common?", df, client=client)
+
+    assert report.status == "ok"
+    assert len(client.calls) == 3  # plan, retry, interpret
+
+
+def test_investigate_reports_a_persistent_malformed_response(df):
+    client = FakeClient(
+        LLMResponseError("bad json"),
+        LLMResponseError("bad json"),
+    )
+
+    report = investigate("Which region is most common?", df, client=client)
+
+    assert report.status == "error"
+    assert len(client.calls) == 2
 
 
 def test_investigate_rejects_an_empty_question(df):

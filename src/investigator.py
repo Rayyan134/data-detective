@@ -34,7 +34,7 @@ from __future__ import annotations
 import json
 import re
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Iterable
 
 import pandas as pd
 
@@ -42,6 +42,7 @@ from src.llm_client import (
     GeminiClient,
     LLMError,
     LLMResponse,
+    LLMResponseError,
     LLMTimeoutError,
 )
 from src.profiler import numeric_summary, profile_dataset
@@ -350,8 +351,15 @@ def _is_date_like(series: pd.Series) -> bool:
     return bool(parsed.notna().all())
 
 
-def _describe_column(name: str, series: pd.Series, stats: pd.Series | None) -> str:
-    """One line of the dataset context for a single column."""
+def _describe_column(
+    name: str, series: pd.Series, stats: pd.Series | None, redact: bool = False
+) -> str:
+    """One line of the dataset context for a single column.
+
+    ``redact`` suppresses the example and category values for this column, which
+    is how a caller keeps an identifier or personal field out of the prompt while
+    still telling the model the column exists.
+    """
     total = len(series)
     missing = int(series.isna().sum())
     missing_pct = round(missing / total * 100, 1) if total else 0.0
@@ -371,7 +379,9 @@ def _describe_column(name: str, series: pd.Series, stats: pd.Series | None) -> s
     is_categorical = unique <= MAX_CATEGORICAL_VALUES and unique < total
 
     extras: list[str] = []
-    if stats is not None and kind == "numeric":
+    if redact:
+        extras.append("values withheld")
+    elif stats is not None and kind == "numeric":
         extras.append(
             "min {min:g}, mean {mean:g}, max {max:g}".format(
                 min=float(stats["min"]),
@@ -417,6 +427,7 @@ def _sample_values(series: pd.Series, limit: int) -> list[str]:
 def build_dataset_context(
     df: pd.DataFrame,
     profile: dict[str, Any] | None = None,
+    redact_columns: Iterable[str] | None = None,
 ) -> str:
     """Describe the dataset's schema and profile as plain text.
 
@@ -424,11 +435,16 @@ def build_dataset_context(
     missingness, uniqueness, descriptive statistics, distinct category values
     and a few examples. It never contains whole columns, and it is capped so it
     stays a fixed size no matter how large the dataset is.
+
+    ``redact_columns`` names columns whose example/category values must not be
+    sent. They still appear by name and type, so the model can reason about the
+    schema, but no value from them is included.
     """
     if not isinstance(df, pd.DataFrame):
         raise TypeError(f"Expected a pandas DataFrame, got {type(df).__name__}.")
     if profile is None:
         profile = profile_dataset(df)
+    redact = {str(column) for column in (redact_columns or ())}
 
     lines = ["DATASET", f"- {profile['n_rows']} rows, {profile['n_columns']} columns"]
     lines.append(
@@ -449,7 +465,9 @@ def build_dataset_context(
         stats = None
         if name in numeric.index:
             stats = numeric.loc[name]
-        lines.append(_describe_column(str(name), df[name], stats))
+        lines.append(
+            _describe_column(str(name), df[name], stats, redact=str(name) in redact)
+        )
 
     lines.append("")
     lines.append(
@@ -536,6 +554,14 @@ Rules:
 - Use only tools from the catalogue, and only the parameters each tool declares.
 - Only reference columns that appear in the dataset schema.
 - Choose the smallest plan that answers the question.
+- Set a parameter explicitly whenever the question implies one, even if the tool
+  declares a default. In particular, always set `metric` on group_comparison to
+  match the wording: "total", "sum" or "revenue by" means "sum"; "average" or
+  "per order" means "mean"; "median" or "typical" means "median".
+- A question may name something the dataset does not contain, such as a
+  customer, a segment or a profit margin. If the wording needs a column that is
+  not in the schema, return status "unsupported" and say which column is
+  missing. Never substitute a different column to make the question fit.
 - If no combination of the available tools can answer the question, return
   status "unsupported" with a short, specific reason. Do not guess, and do not
   propose tools that are not in the catalogue.
@@ -547,10 +573,11 @@ def build_plan_prompt(
     question: str,
     df: pd.DataFrame,
     profile: dict[str, Any] | None = None,
+    redact_columns: Iterable[str] | None = None,
 ) -> str:
     """Assemble the planning prompt: question, tool catalogue and schema."""
     catalogue = json.dumps(build_tool_catalogue(), ensure_ascii=False, indent=2)
-    context = build_dataset_context(df, profile)
+    context = build_dataset_context(df, profile, redact_columns=redact_columns)
     return (
         f"QUESTION\n{question.strip()}\n\n"
         f"AVAILABLE TOOLS\n{catalogue}\n\n"
@@ -829,33 +856,39 @@ def _generate_json(
     fallback_thinking_level: str | None,
     max_output_tokens: int,
 ) -> LLMResponse:
-    """Call the model, retrying once at a lower thinking level on timeout.
+    """Call the model, retrying the two transient failures we have seen.
 
-    The deeper thinking level gives better tool choices but is slower; if the
-    free tier is slow enough to time out, one retry at the fallback level is
-    usually enough to get an answer.
+    Two things go wrong often enough to be worth a single retry:
+
+    * a timeout, because the free tier is slow; the retry uses the lower
+      thinking level, which is faster, so it usually gets through;
+    * a malformed JSON body, where the model returns something that is not
+      parseable. That is a sampling glitch rather than a real answer, and a
+      second attempt almost always parses.
     """
-    try:
+
+    def call(level: str) -> LLMResponse:
         return client.generate_json(
             prompt,
             schema=schema,
             system_instruction=system_instruction,
-            thinking_level=thinking_level,
+            thinking_level=level,
             max_output_tokens=max_output_tokens,
         )
+
+    try:
+        return call(thinking_level)
+    except LLMResponseError:
+        # A malformed body is usually a one-off, so try once more. Prefer the
+        # fallback level when one is configured, otherwise repeat the same one.
+        return call(fallback_thinking_level or thinking_level)
     except LLMTimeoutError:
         if (
             not fallback_thinking_level
             or str(fallback_thinking_level).upper() == str(thinking_level).upper()
         ):
             raise
-        return client.generate_json(
-            prompt,
-            schema=schema,
-            system_instruction=system_instruction,
-            thinking_level=fallback_thinking_level,
-            max_output_tokens=max_output_tokens,
-        )
+        return call(fallback_thinking_level)
 
 
 def plan_investigation(
@@ -866,14 +899,18 @@ def plan_investigation(
     client: Any,
     thinking_level: str = DEFAULT_THINKING_LEVEL,
     fallback_thinking_level: str | None = FALLBACK_THINKING_LEVEL,
+    redact_columns: Iterable[str] | None = None,
 ) -> InvestigationPlan:
     """Ask the model for a plan and validate it.
+
+    ``redact_columns`` is forwarded to the prompt builder so named columns are
+    described without any of their values.
 
     Raises:
         LLMError: The model call failed.
         PlanError: The returned plan failed validation.
     """
-    prompt = build_plan_prompt(question, df, profile)
+    prompt = build_plan_prompt(question, df, profile, redact_columns=redact_columns)
     response = _generate_json(
         client,
         prompt,
@@ -972,8 +1009,16 @@ def format_result_table(df: pd.DataFrame | None, max_rows: int = MAX_PREVIEW_ROW
     return "\n".join(lines)
 
 
-def build_evidence(steps: list[StepResult]) -> str:
-    """Render the computed steps as the evidence block handed to the model."""
+def build_evidence(
+    steps: list[StepResult], redact_columns: Iterable[str] | None = None
+) -> str:
+    """Render the computed steps as the evidence block handed to the model.
+
+    ``redact_columns`` drops those columns from every result table before it is
+    rendered, so a sensitive field is not sent to the model even when a tool
+    (such as ``find_outliers``) returns whole rows.
+    """
+    redact = [str(column) for column in (redact_columns or ())]
     blocks: list[str] = []
     for index, step in enumerate(steps, start=1):
         header = f"STEP {index} — {step.tool}"
@@ -981,10 +1026,15 @@ def build_evidence(steps: list[StepResult]) -> str:
             header += f"\nPurpose: {step.purpose}"
         params = json.dumps(step.params, ensure_ascii=False, sort_keys=True)
         if step.ok:
+            table = step.result
+            if redact and table is not None:
+                drop = [column for column in redact if column in table.columns]
+                if drop:
+                    table = table.drop(columns=drop)
             body = (
                 f"Parameters: {params}\n"
                 f"Result ({step.n_rows} rows):\n"
-                f"{format_result_table(step.result)}"
+                f"{format_result_table(table)}"
             )
         else:
             body = f"Parameters: {params}\nResult: FAILED — {step.error}"
@@ -1048,10 +1098,15 @@ def build_interpretation_prompt(
     df: pd.DataFrame,
     steps: list[StepResult],
     profile: dict[str, Any] | None = None,
+    redact_columns: Iterable[str] | None = None,
 ) -> str:
-    """Assemble the reporting prompt: question, schema and computed evidence."""
-    context = build_dataset_context(df, profile)
-    evidence = build_evidence(steps)
+    """Assemble the reporting prompt: question, schema and computed evidence.
+
+    ``redact_columns`` keeps those columns' values out of both the schema block
+    and the evidence tables.
+    """
+    context = build_dataset_context(df, profile, redact_columns=redact_columns)
+    evidence = build_evidence(steps, redact_columns=redact_columns)
     return (
         f"QUESTION\n{question.strip()}\n\n"
         f"{context}\n\n"
@@ -1188,6 +1243,7 @@ def investigate(
     thinking_level: str = DEFAULT_THINKING_LEVEL,
     fallback_thinking_level: str | None = FALLBACK_THINKING_LEVEL,
     interpret: bool = True,
+    redact_columns: Iterable[str] | None = None,
 ) -> InvestigationReport:
     """Run a full investigation: plan, execute, then interpret the evidence.
 
@@ -1206,6 +1262,10 @@ def investigate(
         fallback_thinking_level: Retried once on timeout when it differs.
         interpret: When False, stop after executing the plan. Useful for
             scoring tool selection without paying for the reporting call.
+        redact_columns: Column names whose values must never be sent to the
+            model. They are still described by name and type so the schema stays
+            truthful, but their example/category values are withheld and they
+            are dropped from the evidence tables.
     """
     question = question if isinstance(question, str) else ""
     if not question.strip():
@@ -1238,6 +1298,7 @@ def investigate(
             client=client,
             thinking_level=thinking_level,
             fallback_thinking_level=fallback_thinking_level,
+            redact_columns=redact_columns,
         )
     except LLMError as exc:
         return _error_report(question, f"The planning request failed: {exc}")
@@ -1280,7 +1341,9 @@ def investigate(
         )
 
     try:
-        prompt = build_interpretation_prompt(question, df, steps, profile)
+        prompt = build_interpretation_prompt(
+            question, df, steps, profile, redact_columns=redact_columns
+        )
         response = _generate_json(
             client,
             prompt,
@@ -1318,7 +1381,9 @@ def investigate(
         [interpretation.answer, interpretation.interpretation]
         + interpretation.caveats
     )
-    unverified = find_unverified_numbers(narrative, build_evidence(steps))
+    unverified = find_unverified_numbers(
+        narrative, build_evidence(steps, redact_columns=redact_columns)
+    )
 
     return InvestigationReport(
         question=question,
