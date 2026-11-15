@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Data Detective — investigation report</title>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 40px 24px;
+    font-family: "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    background: linear-gradient(160deg, #0f172a 0%, #1e293b 45%, #0b1220 100%);
+    color: #e2e8f0;
+  }
+  .wrap { max-width: 940px; margin: 0 auto; }
+  .top { display: flex; align-items: center; gap: 14px; margin-bottom: 6px; }
+  .logo { font-size: 34px; }
+  .brand { font-size: 30px; font-weight: 800; letter-spacing: -.5px; color: #f8fafc; }
+  .sub { color: #94a3b8; font-size: 15px; margin: 0 0 26px 52px; }
+  .card {
+    background: #f8fafc; color: #0f172a;
+    border-radius: 16px; padding: 26px 30px 30px;
+    box-shadow: 0 18px 50px rgba(2, 6, 23, .55);
+    margin-bottom: 22px;
+    border: 1px solid rgba(148,163,184,.25);
+  }
+  .card.hero { border-top: 5px solid #6366f1; }
+  .q-row { display: flex; justify-content: space-between; align-items: center; }
+  .q-label { font-size: 12px; font-weight: 700; letter-spacing: 1.4px;
+    text-transform: uppercase; color: #64748b; }
+  .status { font-size: 12px; font-weight: 700; padding: 3px 12px; border-radius: 999px; }
+  .status.ok { background: #dcfce7; color: #166534; }
+  .question { font-size: 22px; margin: 8px 0 20px; line-height: 1.35; }
+  .block { border-top: 1px solid #e2e8f0; padding-top: 16px; margin-top: 16px; }
+  .block-label { font-size: 12px; font-weight: 800; letter-spacing: 1.2px;
+    text-transform: uppercase; color: #475569; margin-bottom: 10px;
+    display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .tag { font-size: 11px; font-weight: 600; letter-spacing: .3px; text-transform: none;
+    background: #e0e7ff; color: #3730a3; padding: 2px 9px; border-radius: 999px; }
+  .tag-green { background: #dcfce7; color: #166534; }
+  .tag-amber { background: #fef3c7; color: #92400e; }
+  .conf { margin-left: auto; font-size: 12px; font-weight: 700; color: #16a34a; }
+  .reasoning { color: #334155; margin: 0 0 10px; font-size: 14px; }
+  .purpose { color: #64748b; font-size: 13px; margin: 0 0 10px; font-style: italic; }
+  code.step { display: block; background: #0f172a; color: #c7d2fe;
+    font-family: "Cascadia Code", Consolas, monospace; font-size: 13.5px;
+    padding: 12px 14px; border-radius: 9px; overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+  th { text-align: left; color: #475569; font-size: 11.5px; text-transform: uppercase;
+    letter-spacing: .6px; padding: 6px 10px; border-bottom: 2px solid #cbd5e1; }
+  td { padding: 7px 10px; border-bottom: 1px solid #e2e8f0;
+    font-variant-numeric: tabular-nums; }
+  tbody tr:hover { background: #eef2ff; }
+  .answer p { font-size: 16px; line-height: 1.5; margin: 0; color: #0f172a; }
+  .foot { color: #94a3b8; font-size: 13px; display: flex; gap: 22px;
+    flex-wrap: wrap; margin-top: 6px; }
+  .foot b { color: #e2e8f0; }
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="top"><span class="logo">🔍</span><span class="brand">Data Detective</span></div>
+    <p class="sub">Autonomous AI data investigation agent — questions answered by Python tools, never invented by the model</p>
+    
+    <section class="card hero">
+      <div class="q-row">
+        <span class="q-label">Question</span>
+        <span class="status ok">ok</span>
+      </div>
+      <h2 class="question">Which region has the highest average revenue per order?</h2>
+
+      <div class="block">
+        <div class="block-label">Plan <span class="tag">AI-generated, then validated</span></div>
+        <p class="reasoning">Calculate the average revenue per order across regions using group_comparison with metric=&#x27;mean&#x27;.</p>
+        <code class="step">1. <b>group_comparison</b> {&quot;group_column&quot;: &quot;region&quot;, &quot;metric&quot;: &quot;mean&quot;, &quot;value_column&quot;: &quot;revenue&quot;}</code>
+      </div>
+
+      <div class="block">
+        <div class="block-label">Findings <span class="tag tag-green">computed in Python</span></div>
+        <p class="purpose">Compare average order revenue across regions to identify the highest.</p>
+        <table><thead><tr><th>region</th><th>count</th><th>mean</th><th>median</th><th>sum</th></tr></thead><tbody><tr><td>East</td><td>44</td><td>912.007</td><td>501.6</td><td>40,128.31</td></tr><tr><td>North</td><td>48</td><td>741.031</td><td>544.375</td><td>35,569.51</td></tr><tr><td>South</td><td>49</td><td>712.769</td><td>379.44</td><td>34,925.68</td></tr><tr><td>West</td><td>39</td><td>596.87</td><td>413.42</td><td>23,277.92</td></tr></tbody></table>
+      </div>
+
+      <div class="block answer">
+        <div class="block-label">Answer <span class="tag tag-amber">AI interpretation</span>
+          <span class="conf">confidence: high</span></div>
+        <p>The East region has the highest average revenue per order, with a mean revenue of 912.007.</p>
+      </div>
+    </section>
+    
+    
+    <section class="card">
+      <div class="q-row">
+        <span class="q-label">Question</span>
+        <span class="status ok">ok</span>
+      </div>
+      <h2 class="question">Which month had the highest total revenue?</h2>
+
+      <div class="block">
+        <div class="block-label">Plan <span class="tag">AI-generated, then validated</span></div>
+        <p class="reasoning">Aggregate total revenue by month using trend_over_time with monthly frequency (ME).</p>
+        <code class="step">1. <b>trend_over_time</b> {&quot;date_column&quot;: &quot;order_date&quot;, &quot;freq&quot;: &quot;ME&quot;, &quot;value_column&quot;: &quot;revenue&quot;}</code>
+      </div>
+
+      <div class="block">
+        <div class="block-label">Findings <span class="tag tag-green">computed in Python</span></div>
+        <p class="purpose">Aggregate revenue by month to find the peak month.</p>
+        <table><thead><tr><th>period</th><th>total</th><th>orders</th><th>change</th><th>pct_change</th></tr></thead><tbody><tr><td>2025-01-31</td><td>13,921.07</td><td>24</td><td>nan</td><td>nan</td></tr><tr><td>2025-02-28</td><td>15,218.29</td><td>26</td><td>1,297.22</td><td>9.3</td></tr><tr><td>2025-03-31</td><td>16,443.68</td><td>24</td><td>1,225.39</td><td>8.1</td></tr><tr><td>2025-04-30</td><td>19,733.21</td><td>23</td><td>3,289.53</td><td>20</td></tr><tr><td>2025-05-31</td><td>19,582.49</td><td>18</td><td>-150.72</td><td>-0.8</td></tr><tr><td>2025-06-30</td><td>13,301.97</td><td>16</td><td>-6,280.52</td><td>-32.1</td></tr><tr><td>2025-07-31</td><td>20,024.78</td><td>26</td><td>6,722.81</td><td>50.5</td></tr><tr><td>2025-08-31</td><td>15,675.93</td><td>23</td><td>-4,348.85</td><td>-21.7</td></tr></tbody></table>
+      </div>
+
+      <div class="block answer">
+        <div class="block-label">Answer <span class="tag tag-amber">AI interpretation</span>
+          <span class="conf">confidence: high</span></div>
+        <p>July 2025 (period ending 2025-07-31) had the highest total revenue at 20,024.8 across 26 orders.</p>
+      </div>
+    </section>
+    
+    <div class="foot">
+      <span>Model <b>gemini-3.6-flash</b></span>
+      <span>Dataset <b>sample_sales.csv</b> · 180 rows</span>
+      <span>Tools <b>6</b></span>
+      <span>Tests <b>173 passing</b></span>
+    </div>
+  </div>
+</body>
+</html>
