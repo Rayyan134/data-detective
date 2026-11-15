@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Data Detective — Day 7 visualisations & deployment</title>
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 36px 24px; font-family: "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    background: linear-gradient(160deg, #0f172a 0%, #1e293b 45%, #0b1220 100%); color: #e2e8f0; }
+  .wrap { max-width: 980px; margin: 0 auto; }
+  .top { display: flex; align-items: center; gap: 14px; margin-bottom: 6px; }
+  .logo { font-size: 34px; } .brand { font-size: 30px; font-weight: 800; color: #f8fafc; letter-spacing: -.5px; }
+  .sub { color: #94a3b8; font-size: 15px; margin: 0 0 24px 52px; }
+  .card { background: #f8fafc; color: #0f172a; border-radius: 16px; padding: 24px 28px 28px;
+    box-shadow: 0 18px 50px rgba(2,6,23,.55); margin-bottom: 20px; border: 1px solid rgba(148,163,184,.25); }
+  .card-label { font-size: 12px; font-weight: 800; letter-spacing: 1.4px; text-transform: uppercase; color: #475569;
+    margin: 0 0 14px; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .tag { font-size: 11px; font-weight: 600; letter-spacing: .3px; text-transform: none; background: #e0e7ff; color: #3730a3; padding: 2px 9px; border-radius: 999px; }
+  .tag-green { background: #dcfce7; color: #166534; }
+  .headline { font-size: 20px; line-height: 1.35; margin: 0 0 14px; color: #0f172a; }
+  .headline b { color: #4f46e5; }
+  .metrics { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin: 12px 0; }
+  .metric { background: #1a1c24; border-radius: 8px; padding: 10px 12px; }
+  .metric .v { font-size: 22px; font-weight: 700; color: #fafafa; }
+  .metric .l { font-size: 11px; text-transform: uppercase; letter-spacing: .6px; color: #7d8096; margin-top: 2px; }
+  .ok { background: #1a3a2a; border: 1px solid #2a6b4a; color: #86efac; border-radius: 8px; padding: 10px 12px; font-size: 13px; margin: 10px 0; }
+  h4 { font-size: 15px; margin: 14px 0 4px; color: #0f172a; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; margin: 8px 0; }
+  th { text-align: left; color: #475569; font-size: 11.5px; text-transform: uppercase; letter-spacing: .5px; padding: 6px 8px; border-bottom: 1px solid #cbd5e1; }
+  td { padding: 6px 8px; border-bottom: 1px solid #e2e8f0; color: #334155; }
+  tr:last-child td { border-bottom: none; }
+  /* CSS bar chart */
+  .chart { background: #f1f5f9; border: 1px solid #e2e8f0; border-radius: 10px; padding: 14px 16px; margin: 8px 0; }
+  .chart-title { font-size: 12px; color: #475569; margin-bottom: 8px; font-weight: 600; }
+  .bar-row { display: flex; align-items: center; gap: 10px; margin: 6px 0; }
+  .bar-label { width: 80px; font-size: 12.5px; color: #0f172a; }
+  .bar-track { flex: 1; background: #e2e8f0; border-radius: 6px; height: 18px; overflow: hidden; }
+  .bar-fill { height: 100%; background: #4f46e5; border-radius: 6px; }
+  .bar-val { width: 46px; text-align: right; font-size: 12.5px; color: #475569; font-weight: 600; }
+  .deploy { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 8px 0; }
+  .deploy-card { background: #fff; border: 1px solid #e2e8f0; border-radius: 10px; padding: 14px 16px; }
+  .deploy-card h5 { margin: 0 0 6px; font-size: 13px; color: #0f172a; }
+  .deploy-card p { margin: 0; font-size: 12.5px; color: #475569; line-height: 1.5; }
+  .deploy-card code { background: #f1f5f9; padding: 1px 5px; border-radius: 4px; font-size: 11.5px; }
+  .foot { color: #94a3b8; font-size: 13px; display: flex; gap: 22px; flex-wrap: wrap; margin-top: 6px; }
+  .foot b { color: #e2e8f0; }
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="top"><span class="logo">🔍</span><span class="brand">Data Detective</span></div>
+    <p class="sub">Autonomous AI data investigation agent — every number computed in Python, never invented by the model</p>
+
+    <section class="card">
+      <div class="card-label">Day 7 · Visualisations & deployment <span class="tag">last planned feature</span>
+        <span class="tag tag-green">281 tests passing</span></div>
+      <p class="headline">Charts are now <b>built from computed results</b> (altair), not from model text —
+        bars, lines and heatmaps appear under each finding. Deployment is prepared (Streamlit Cloud steps,
+        a Dockerfile, a smoke-test checklist); the public URL needs an interactive sign-in.</p>
+
+      <div class="metrics">
+        <div class="metric"><div class="v">5</div><div class="l">Chartable tools</div></div>
+        <div class="metric"><div class="v">281</div><div class="l">Tests passing</div></div>
+        <div class="metric"><div class="v">0</div><div class="l">Charts from model text</div></div>
+        <div class="metric"><div class="v">1</div><div class="l">Dockerfile</div></div>
+      </div>
+      <div class="ok">Visualisations are derived from tool result tables only — the model never draws a chart.</div>
+    </section>
+
+    <section class="card">
+      <div class="card-label">Chart example — value counts <span class="tag">altair, from computed table</span></div>
+      <h4>Step 1 — value_counts_table</h4>
+      <div class="caption">Count how often each channel appears</div>
+      <table>
+        <thead><tr><th>channel</th><th>count</th><th>pct</th></tr></thead>
+        <tbody>
+          <tr><td>Online</td><td>94</td><td>52.2</td></tr>
+          <tr><td>Retail</td><td>52</td><td>28.9</td></tr>
+          <tr><td>Wholesale</td><td>34</td><td>18.9</td></tr>
+        </tbody>
+      </table>
+      <div class="chart">
+        <div class="chart-title">count by channel</div>
+        <div class="bar-row"><span class="bar-label">Online</span><div class="bar-track"><div class="bar-fill" style="width:100%"></div></div><span class="bar-val">94</span></div>
+        <div class="bar-row"><span class="bar-label">Retail</span><div class="bar-track"><div class="bar-fill" style="width:55%"></div></div><span class="bar-val">52</span></div>
+        <div class="bar-row"><span class="bar-label">Wholesale</span><div class="bar-track"><div class="bar-fill" style="width:36%"></div></div><span class="bar-val">34</span></div>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="card-label">Deployment prepared <span class="tag tag-green">docs/deployment.md</span></div>
+      <div class="deploy">
+        <div class="deploy-card"><h5>Target</h5><p>Streamlit Community Cloud — free, deploys from the public repo.</p></div>
+        <div class="deploy-card"><h5>Local run</h5><p><code>streamlit run app.py</code> (http://localhost:8501)</p></div>
+        <div class="deploy-card"><h5>Container</h5><p><code>docker build -t data-detective .</code> then run with <code>-e GEMINI_API_KEY=...</code></p></div>
+        <div class="deploy-card"><h5>Secrets</h5><p>Set <code>GEMINI_API_KEY</code> (and optionally <code>GEMINI_MODEL</code>) in platform secrets.</p></div>
+      </div>
+      <div class="caption" style="color:#475569;margin-top:10px;">Smoke-test checklist and performance notes live in <code>docs/deployment.md</code>.</div>
+    </section>
+
+    <div class="foot">
+      <span>Charts <b>altair</b></span>
+      <span>Tests <b>281 passing</b></span>
+      <span>Deploy doc <b>docs/deployment.md</b></span>
+      <span>Quota <b>20 req/day/model</b></span>
+    </div>
+  </div>
+</body>
+</html>

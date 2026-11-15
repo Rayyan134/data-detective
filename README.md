@@ -4,7 +4,7 @@
 
 Data Detective is an AI-powered application for investigating datasets with natural-language questions. Upload a CSV, ask a question, and receive findings backed by calculations performed in Python — not invented by a language model.
 
-> **Status:** Day 6 of the DDS build. Everything from Day 5 works. Day 6 is a hardening pass: input validation and sanitisation (bounded questions and filenames, CSV limits), a secrets-handling review (no keys in the repo), rate-limit and caching considerations (retry/backoff, a per-session investigation cache, cached file loading), a triaged bug list with the fixes applied, and a README/architecture cleanup. A security review lives in `docs/security.md`. 274 tests pass offline. A full backup-model run scores 12/15 plan accuracy; the authoritative primary-model run is pending the free-tier daily quota (see `eval/evaluation.md`).
+> **Status:** Day 7 of the DDS build. Everything from Day 6 works. Day 7 delivers the last planned feature — **visualisations** (charts built from computed results, via `src/visualizer.py`) — plus deployment preparation: a Streamlit theme config, a `Dockerfile`, and `docs/deployment.md` with step-by-step Streamlit Cloud instructions, a smoke-test checklist, performance notes and a fallback plan. 281 tests pass offline. The actual public deploy needs an interactive Streamlit Cloud sign-in (see `docs/deployment.md`); the app runs locally with `streamlit run app.py`.
 
 ## What works today
 
@@ -18,6 +18,7 @@ Data Detective is an AI-powered application for investigating datasets with natu
 - An **evaluation harness** (`src/evaluation.py` + `eval/score_investigator.py`) that measures tool accuracy, parameter accuracy, refusal accuracy, answer accuracy and faithfulness, and records latency, tokens and (optionally) cost.
 - **Safety guardrails**: the model can only name registered tools and declared parameters; plans are grounded to real columns; `redact_columns` keeps chosen fields (e.g. identifiers) out of every prompt; and a check flags statistics in the narrative that no tool computed.
 - **The investigator in the browser**: upload a CSV (or load the sample dataset), ask a question, and get a report that keeps computed findings separate from the AI answer. Example questions are derived from the real schema, PII columns are pre-selected for redaction, and the UI has a loading spinner, error states and reset/clear.
+- **Charts from computed results**: `src/visualizer.py` builds bar, line and heatmap charts from tool result tables (altair), rendered in the report view. No chart is ever generated from model text.
 - **Safe activity logging**: every investigation is appended as one JSON line with metadata only (question, shape, tools, params, status, tokens, latency) — never cell values or the API key.
 - **Security review** (`docs/security.md`): secrets handling (no keys in the repo), input validation and sanitisation, rate limits and caching, a security checklist, a triaged bug list with fixes, and remaining risks.
 - An isolated Gemini Flash client (`src/llm_client.py`) using plain HTTP, with typed errors for authentication, rate limits, timeouts and malformed responses, plus retries on transient overload.
@@ -132,7 +133,7 @@ data-detective/
 │   ├── evaluation.py       # Offline scoring: metrics, answer checks, usage recording
 │   ├── ui_report.py        # Presentation helpers turning a report into UI data
 │   ├── audit.py            # Safe, metadata-only investigation logging
-│   └── visualizer.py       # Planned: charts from computed results
+│   └── visualizer.py       # Charts built from computed tool results (altair)
 ├── tests/
 │   ├── test_profiler.py    # Unit tests for src/profiler.py
 │   ├── test_tools.py       # Unit tests for src/tools.py
@@ -143,7 +144,9 @@ data-detective/
 │   ├── test_safety.py      # Sandbox, grounding, redaction and honesty guardrails
 │   ├── test_ui_report.py   # Presentation helpers (no Streamlit, no network)
 │   ├── test_audit.py       # Safe logging (no network)
-│   └── test_app.py         # Streamlit interface smoke tests (AppTest, no browser)
+│   ├── test_app.py         # Streamlit interface smoke tests (AppTest, no browser)
+│   ├── test_visualizer.py  # Chart builders (no network)
+│   └── test_input_validation.py  # Input validation and sanitisation
 ├── eval/
 │   ├── questions.json      # Fixed question set with expected answers + answer checks
 │   ├── score_investigator.py  # Runs the question set and writes a metrics report
@@ -282,8 +285,20 @@ Files are processed in memory. Uploaded datasets are not written to disk or perm
 - [x] Prompt iteration driven by evaluation failures
 - [x] Investigator wired into the Streamlit interface (loading, errors, reset, safe logging)
 - [x] Security hardening: input validation, secrets review, rate limits and caching, bug triage
-- [ ] Visualisations
-- [ ] Deployment
+- [x] Visualisations: charts built from computed results (altair)
+- [x] Deployment prepared: Streamlit Cloud steps, Dockerfile, smoke-test checklist (public URL needs an interactive sign-in)
+- [ ] Deployment live (Day 7/8)
+
+## Deployment
+
+The app is deployment-ready but the public URL needs an interactive Streamlit Cloud
+sign-in. Full steps, a smoke-test checklist, performance notes and a fallback plan
+live in [`docs/deployment.md`](docs/deployment.md).
+
+- **Target:** Streamlit Community Cloud (free, deploys from this public repo).
+- **Local run:** `streamlit run app.py` (opens http://localhost:8501).
+- **Container:** `docker build -t data-detective . && docker run -p 8501:8501 -e GEMINI_API_KEY=... data-detective`.
+- **Secrets:** set `GEMINI_API_KEY` (and optionally `GEMINI_MODEL`) in the platform's secrets; `.streamlit/secrets.toml` is git-ignored.
 
 ## Challenge
 

@@ -41,6 +41,7 @@ from src.ui_report import (
     status_banner,
     unverified_warning,
 )
+from src.visualizer import chart_for
 
 PROJECT_ROOT = Path(__file__).resolve().parent
 SAMPLE_DATASET = PROJECT_ROOT / "data" / "sample_sales.csv"
@@ -192,6 +193,9 @@ def render_investigation(report) -> None:
             )
             if section["frame"] is not None:
                 st.dataframe(section["frame"], width="stretch")
+                chart = chart_for(section["tool"], section["frame"], section["params"])
+                if chart is not None:
+                    st.altair_chart(chart, use_container_width=True)
             else:
                 st.error(f"Tool failed: {section['error']}")
             if section["table"]:
