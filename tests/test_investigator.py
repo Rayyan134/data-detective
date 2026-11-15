@@ -358,6 +358,74 @@ def test_unsupported_plan_gets_a_default_reason(df):
 
 
 # ---------------------------------------------------------------------------
+# Parameter normalisation (model leaks trailing text into string fields)
+# ---------------------------------------------------------------------------
+def test_plan_normalises_trailing_text_in_a_column_parameter(df):
+    payload = plan_payload(
+        step("value_counts_table", column="region metric: mean please confirm")
+    )
+
+    plan = validate_plan(payload, df)
+
+    assert plan.steps[0].params["column"] == "region"
+    assert plan.repairs and "normalised" in plan.repairs[0]
+
+
+def test_plan_normalises_trailing_text_when_only_one_column_can_match(df):
+    # No boundary, but "revenue" is the only known column that fits.
+    payload = plan_payload(step("value_counts_table", column="revenuepopular"))
+
+    plan = validate_plan(payload, df)
+
+    assert plan.steps[0].params["column"] == "revenue"
+    assert plan.repairs
+
+
+def test_plan_normalises_trailing_text_in_an_enum_parameter(df):
+    payload = plan_payload(
+        step("group_comparison", group_column="region", value_column="revenue", metric="mean ok")
+    )
+
+    plan = validate_plan(payload, df)
+
+    assert plan.steps[0].params["metric"] == "mean"
+    assert plan.repairs
+
+
+def test_plan_normalises_trailing_text_inside_a_column_list(df):
+    payload = plan_payload(step("correlation", columns=["revenue junk", "units"]))
+
+    plan = validate_plan(payload, df)
+
+    assert plan.steps[0].params["columns"] == ["revenue", "units"]
+    assert plan.repairs
+
+
+def test_plan_still_rejects_a_genuinely_unknown_column(df):
+    payload = plan_payload(step("value_counts_table", column="profit"))
+
+    with pytest.raises(PlanError, match="unknown column 'profit'"):
+        validate_plan(payload, df)
+
+
+def test_plan_still_rejects_a_genuinely_wrong_enum(df):
+    payload = plan_payload(
+        step("group_comparison", group_column="region", value_column="revenue", metric="mode")
+    )
+
+    with pytest.raises(PlanError, match="must be one of"):
+        validate_plan(payload, df)
+
+
+def test_plan_without_leaked_text_records_no_repairs(df):
+    payload = plan_payload(step("value_counts_table", column="region"))
+
+    plan = validate_plan(payload, df)
+
+    assert plan.repairs == []
+
+
+# ---------------------------------------------------------------------------
 # Execution
 # ---------------------------------------------------------------------------
 def test_run_plan_executes_each_step(df):
@@ -555,6 +623,19 @@ def test_investigate_report_keeps_evidence_and_interpretation_apart(df):
 
     assert "Findings (computed in Python)" in markdown
     assert "Answer (AI interpretation" in markdown
+
+
+def test_investigate_surfaces_normalised_parameters(df):
+    client = FakeClient(
+        plan_payload(step("value_counts_table", column="region trailing text")),
+        interp_payload(),
+    )
+
+    report = investigate("Which region is most common?", df, client=client)
+
+    assert report.status == "ok"
+    assert report.plan.repairs
+    assert "Normalised parameters" in report.to_markdown()
 
 
 def test_investigate_returns_unsupported_without_running_tools(df):

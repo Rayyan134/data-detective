@@ -121,11 +121,17 @@ class PlanError(InvestigationError):
 # ---------------------------------------------------------------------------
 @dataclass
 class PlanStep:
-    """One validated tool call: a known tool with clean, checked parameters."""
+    """One validated tool call: a known tool with clean, checked parameters.
+
+    ``repairs`` records any value that had to be normalised before it could be
+    accepted (see ``_snap_to_known``). It is normally empty; when it is not, the
+    change is surfaced in the report rather than hidden.
+    """
 
     tool: str
     params: dict[str, Any] = field(default_factory=dict)
     purpose: str = ""
+    repairs: list[str] = field(default_factory=list)
 
     def describe(self) -> str:
         """A one-line, human-readable description of the call."""
@@ -147,6 +153,11 @@ class InvestigationPlan:
     @property
     def is_supported(self) -> bool:
         return self.status == "plan"
+
+    @property
+    def repairs(self) -> list[str]:
+        """Every normalisation applied to this plan, across all steps."""
+        return [note for step in self.steps for note in step.repairs]
 
 
 @dataclass
@@ -238,6 +249,14 @@ class InvestigationReport:
                 lines.append(
                     f"_Marked unsupported._ {self.plan.unsupported_reason}"
                 )
+            if self.plan.repairs:
+                lines.append("")
+                lines.append(
+                    "**Normalised parameters** (the model's output contained "
+                    "trailing text that was trimmed to a known value):"
+                )
+                for note in self.plan.repairs:
+                    lines.append(f"- {note}")
             lines.append("")
 
         if self.steps:
@@ -571,6 +590,36 @@ def _coerce_number(value: Any, *, integer: bool, where: str) -> float | int:
     return float(value)
 
 
+def _snap_to_known(value: str, candidates: list[str]) -> tuple[str, bool]:
+    """Snap a value back to a known token when a model leaks trailing text.
+
+    Gemini's structured output occasionally appends its own reasoning text to
+    the end of a string field, e.g. ``"revenue metric: mean"`` where the
+    intended value was ``"revenue"``. When a known token is a prefix of the
+    value and the remainder is clearly not part of it, the value is snapped
+    back to that token.
+
+    A value that does not start with any known token is returned unchanged, so
+    a genuinely wrong value is still rejected downstream. The second element of
+    the result is ``True`` only when a change was made, so the caller can record
+    it as a visible repair rather than hiding it.
+    """
+    if value in candidates:
+        return value, False
+    matches = [candidate for candidate in candidates if candidate and value.startswith(candidate)]
+    if not matches:
+        return value, False
+    best = max(matches, key=len)
+    remainder = value[len(best):]
+    # Accept when the remainder does not continue the token as a word
+    # ("revenue metric..." -> boundary) or when only one known token could
+    # possibly match ("revenuepopular..." still means "revenue").
+    boundary = not remainder or not remainder[0].isalnum()
+    if boundary or len(matches) == 1:
+        return best, True
+    return value, False
+
+
 def _validate_param(
     df: pd.DataFrame,
     *,
@@ -579,8 +628,14 @@ def _validate_param(
     name: str,
     value: Any,
     declared: dict[str, Any],
+    repairs: list[str],
 ) -> Any:
-    """Validate one parameter value against its declared schema."""
+    """Validate one parameter value against its declared schema.
+
+    Values are normalised against known columns and enums first (recording any
+    change in ``repairs``), then the result is checked strictly. Nothing that
+    still fails validation reaches ``run_tool``.
+    """
     expected = declared.get("type", "string")
     where = f"Step {index} ({tool}) parameter '{name}'"
     allowed = declared.get("enum")
@@ -590,11 +645,25 @@ def _validate_param(
             raise PlanError(f"{where} must be a non-empty string.")
         value = value.strip()
         if allowed and value not in allowed:
-            raise PlanError(
-                f"{where} must be one of {', '.join(allowed)}; got {value!r}."
-            )
-        if _is_column_param(name):
-            _require_column(df, value, where)
+            snapped, changed = _snap_to_known(value, list(allowed))
+            if changed:
+                repairs.append(
+                    f"{where} was normalised from {value!r} to {snapped!r}."
+                )
+                value = snapped
+            else:
+                raise PlanError(
+                    f"{where} must be one of {', '.join(allowed)}; got {value!r}."
+                )
+        if _is_column_param(name) and value not in df.columns:
+            snapped, changed = _snap_to_known(value, [str(c) for c in df.columns])
+            if changed:
+                repairs.append(
+                    f"{where} was normalised from {value!r} to {snapped!r}."
+                )
+                value = snapped
+            else:
+                _require_column(df, value, where)
         return value
 
     if expected == "array":
@@ -610,8 +679,15 @@ def _validate_param(
             if not isinstance(item, str) or not item.strip():
                 raise PlanError(f"{where} must contain non-empty strings.")
             item = item.strip()
-            if name == "columns":
-                _require_column(df, item, where)
+            if name == "columns" and item not in df.columns:
+                snapped, changed = _snap_to_known(item, [str(c) for c in df.columns])
+                if changed:
+                    repairs.append(
+                        f"{where} was normalised from {item!r} to {snapped!r}."
+                    )
+                    item = snapped
+                else:
+                    _require_column(df, item, where)
             cleaned.append(item)
         return cleaned
 
@@ -641,6 +717,7 @@ def _validate_step(raw_step: Any, df: pd.DataFrame, index: int) -> PlanStep:
         raise PlanError(f"Step {index} ({tool}) 'params' must be a JSON object.")
 
     cleaned: dict[str, Any] = {}
+    repairs: list[str] = []
     for name, value in raw_params.items():
         if value is None:
             # An explicit null means "not provided"; treat it as absent rather
@@ -658,6 +735,7 @@ def _validate_step(raw_step: Any, df: pd.DataFrame, index: int) -> PlanStep:
             name=name,
             value=value,
             declared=declared[name],
+            repairs=repairs,
         )
 
     missing = [
@@ -676,6 +754,7 @@ def _validate_step(raw_step: Any, df: pd.DataFrame, index: int) -> PlanStep:
         tool=tool,
         params=cleaned,
         purpose=purpose.strip() if isinstance(purpose, str) else "",
+        repairs=repairs,
     )
 
 

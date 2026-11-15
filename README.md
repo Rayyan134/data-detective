@@ -4,7 +4,7 @@
 
 Data Detective is an AI-powered application for investigating datasets with natural-language questions. Upload a CSV, ask a question, and receive findings backed by calculations performed in Python — not invented by a language model.
 
-> **Status:** Day 3 of the DDS build. CSV loading, profiling, six analytical tools, an isolated live-tested Gemini REST client, and the **investigator** — the agent layer that plans an investigation, validates it, runs the tools and writes an evidence-backed report — are all working (165 tests). The investigator is verified live; a full scored baseline on the primary model is pending its free-tier daily quota reset (see `eval/baseline.md`).
+> **Status:** Day 3 of the DDS build. CSV loading, profiling, six analytical tools, an isolated live-tested Gemini REST client, and the **investigator** — the agent layer that plans an investigation, validates it, runs the tools and writes an evidence-backed report — are all working (173 tests). A first baseline scored the primary model at 9/15, where all six misses were one model-output defect; that defect is now fixed and the fix is verified live, with the full post-fix re-score pending the free-tier daily quota (see `eval/baseline.md`).
 
 ## What works today
 
@@ -16,7 +16,7 @@ Data Detective is an AI-powered application for investigating datasets with natu
 - **An autonomous investigator** (`src/investigator.py`) that turns a natural-language question into a validated plan of tool calls, executes them in Python and reports evidence-backed findings.
 - A 15-question evaluation set with hand-checked expected answers (`eval/questions.json`) and a scoring script (`eval/score_investigator.py`).
 - An isolated Gemini Flash client (`src/llm_client.py`) using plain HTTP, with typed errors for authentication, rate limits, timeouts and malformed responses, plus retries on transient overload.
-- Unit tests for the profiling, tools, LLM client and investigator modules (`pytest`, 165 tests). Every investigator test runs offline against a fake model.
+- Unit tests for the profiling, tools, LLM client and investigator modules (`pytest`, 173 tests). Every investigator test runs offline against a fake model.
 
 ## Analytical tools
 
@@ -62,6 +62,7 @@ question + dataset + profile
 - The model only ever chooses a tool name and parameters. It cannot run code, and `run_tool` is the only executor.
 - The model never sees the dataset itself — only its schema and profile. Prompts are capped in size and contain no whole columns.
 - A plan that names an unknown tool, an unknown parameter, a missing required parameter, a wrong type, or a column that does not exist is **rejected before anything runs** (`PlanError`).
+- Structured output is **normalised before the strict check**: the model occasionally appends its own reasoning text to the end of a string field (e.g. `"revenue metric: mean"`), so a value that starts with a known column or enum value is snapped back to it. Values that do not start with a known token are still rejected, and every normalisation is shown in the report under "Normalised parameters".
 - `investigate()` never raises on expected failures. It returns a report whose `status` is `ok`, `partial` (findings computed but interpretation failed), `unsupported` or `error`, so a UI can always render something honest.
 - The report separates **Findings (computed in Python)** from the **Answer (AI interpretation)** in distinct sections, and flags any statistical-looking number in the narrative that cannot be matched to a computed value.
 
@@ -123,7 +124,8 @@ data-detective/
 ├── eval/
 │   ├── questions.json      # Fixed question set with expected answers
 │   ├── score_investigator.py  # Scores tool selection against the question set
-│   ├── baseline.md         # Primary-model baseline and how it was measured
+│   ├── baseline.md         # Primary-model baseline, diagnosis and fix
+│   ├── baseline-gemini-3.6-flash-prefix.md  # Raw pre-fix 9/15 run (for the record)
 │   └── baseline-gemini-3.1-flash-lite.md  # Backup-model baseline (11/15)
 ├── data/                   # Sample datasets (never commit private data)
 │   ├── sample_people.csv   # Small synthetic set with missing/duplicate values

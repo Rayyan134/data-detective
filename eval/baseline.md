@@ -1,87 +1,101 @@
 # Investigator baseline
 
-- Date: 2026-11-13
+- Date: 2026-11-13 (initial), revised 2026-11-15
 - Dataset: `data/sample_sales.csv`
 - Mode: planning only — the chosen tool and its parameters are scored, the narrative interpretation is not
 - Scorer: `eval/score_investigator.py`
 
-This file records the honest state of the baseline. A clean, single-run score
-for the primary model (`gemini-3.6-flash`) could not be completed on the day
-Stage C landed, because that model's free tier allows only **20 requests per
-day** and the quota was exhausted while debugging. The evidence below is what
-was actually observed, in the order it happened.
+## Primary model: `gemini-3.6-flash` — 9 / 15 (pre-normalisation)
 
-## Primary model: `gemini-3.6-flash`
+The first clean full run of the primary model scored **9 / 15**. The raw table
+is in `eval/baseline-gemini-3.6-flash-prefix.md`. Every one of the six failures
+was the **same defect**, not six different mistakes:
 
-**Status: clean re-run pending quota reset.**
-
-### Run 1 — pre-fix, 6 / 15
-
-The first full scoring run scored **6 / 15**. It failed for three separate
-reasons, only one of which was a model limitation:
-
-| Cause | Questions | Explanation |
+| ID | Question | Failure |
 |---|---|---|
-| Garbled parameter values | Q01, Q02, Q11 and others | See "Root cause" below. |
-| Scorer compared omitted optional parameters literally | Q02, Q07 | The model correctly omitted an optional parameter (e.g. `metric`), which means "use the default"; the scorer treated the omission as a mismatch. Fixed in `_params_match`. |
-| Free-tier rate limit (HTTP 429) | a few | Retried on the next question. |
+| Q01 | Which region has the highest average revenue per order? | leaked text in `value_column` |
+| Q02 | Compare total revenue by product. | leaked text in `value_column` |
+| Q04 | How did monthly revenue change over time? | leaked text in `value_column` |
+| Q10 | What is the average satisfaction score by product? | leaked text in `value_column` |
+| Q11 | Which month had the highest total revenue? | leaked text in `value_column` |
+| Q13 | Which channel has the highest median revenue per order? | leaked text in `value_column` |
 
-### Root cause of the garbled values
+Q03, Q05, Q06, Q07, Q08, Q09, Q12, Q14 and Q15 passed.
 
-With `thinking_level="MEDIUM"`, thinking tokens count towards
-`maxOutputTokens`. The original cap (`2048`) was too tight for the JSON plan,
-so the model ran out of budget mid-string and emitted degraded text inside
-parameter values — e.g. a `value_column` of
-`"revenue Brian? no, revenue! wait, ..."` instead of `"revenue"`. Validation
-correctly rejected those plans, so the tools were never run on bad input.
+### The defect
 
-**Fix:** raised the caps to `PLAN_MAX_OUTPUT_TOKENS = 8192` and
-`INTERPRETATION_MAX_OUTPUT_TOKENS = 4096`, leaving room for reasoning plus the
-answer. The second failure was a scorer bug and was fixed separately.
-
-### Run 2 — post-fix verification (partial, quota exhausted)
-
-After the fix, two spot checks were re-run against the live API:
-
-- **Q11** ("Which month had the highest total revenue?") → plan
-  `trend_over_time {"date_column": "order_date", "freq": "ME", "value_column": "revenue"}`
-  — **validated, correct.** This is the same question that was garbled before
-  the fix, so the token cap was confirmed as the cause.
-- **Q01** ("Which region has the highest average revenue per order?") →
-  `group_comparison {"group_column": "region", "metric": "mean", "value_column": "revenue"}`
-  — **validated, correct**, answer East with mean 912.007.
-
-The full 15-question re-run then hit the **daily** limit:
+In each failure the model wrote a *correct* column name and then kept
+"thinking" inside the same JSON string, for example:
 
 ```
-Quota exceeded for metric:
-generativelanguage.googleapis.com/generate_content_free_tier_requests,
-limit: 20, model: gemini-3.6-flash,
-description: Generate content requests per day limit exceeded on Free Tier.
+"value_column": "revenue oppose metric sum"
+"value_column": "revenue নদী_freq="
+"value_column": "revenue Cholera freq ME"
 ```
 
-A full investigation costs two requests (plan + interpret), so the 20-request
-daily budget allows only about ten complete investigations per day. The clean
-`gemini-3.6-flash` baseline will be recorded here once the quota resets, by
-running:
+Strict validation correctly rejected these plans, so no tool was ever run on a
+bad column name. The consequence was a failed question, not a wrong answer.
+
+### Corrected root cause
+
+An earlier note in this file blamed the `maxOutputTokens` cap. That was wrong.
+A targeted probe on 2026-11-15 showed:
+
+- `finish_reason: STOP` — generation was **not** truncated (`MAX_TOKENS` would
+  have indicated truncation).
+- `thoughtsTokenCount: 297` — thinking used very little budget.
+- The leak reproduced at **both** `MEDIUM` and `LOW` thinking.
+
+So this is a structured-output quirk of the model: the reasoning text bleeds
+into the end of a string field, independently of the token budget.
+
+### The fix
+
+`validate_plan` now **normalises** a parameter value before the strict check:
+
+- If a string parameter that must name a column (or must be one of an enum)
+  does not match, but a known column name (or enum value) is a prefix of it, the
+  value is snapped back to the known token.
+- A value that does not start with any known token is still rejected exactly as
+  before, so a genuinely wrong column or enum is never accepted.
+- Every normalisation is recorded on the plan and shown in the report under
+  **"Normalised parameters"**, so the change is visible rather than hidden.
+
+This is a deterministic, offline-testable fix (`tests/test_investigator.py`),
+not a rewrite of the model's intent: it only trims trailing noise after an
+unambiguously correct value.
+
+### Verification of the fix (live)
+
+Two of the six failing questions were re-run live on 2026-11-15:
+
+- **Q01** → `group_comparison {"group_column": "region", "metric": "mean", "value_column": "revenue"}`
+  — clean, no repair needed.
+- **Q04** → leaked `'revenue Cholera freq ME'`, normalised to `'revenue'`,
+  plan validated, status `ok`.
+
+### Pending: full re-run
+
+The free tier allows only **20 requests per day** for `gemini-3.6-flash`, and
+all 20 were used on 2026-11-15 (one full 15-question run plus diagnostics).
+The full post-fix score will be recorded here by re-running:
 
 ```
 .\.venv\Scripts\python.exe eval\score_investigator.py
 ```
 
+The pre-fix raw output is kept as `eval/baseline-gemini-3.6-flash-prefix.md`.
+
 ## Backup model: `gemini-3.1-flash-lite` — 11 / 15
 
-Because the primary model was blocked, the same exam was run against
-`gemini-3.1-flash-lite`, which still had quota. Full detail is in
-`eval/baseline-gemini-3.1-flash-lite.md`.
+Run against the same exam while the primary model was quota-blocked. Full
+detail is in `eval/baseline-gemini-3.1-flash-lite.md`.
 
 - **Score: 11 / 15.**
-- Failures: **Q02** and **Q13** (a weaker model omitted or chose the wrong
-  `metric`), **Q07** (wrong `top_n`), and **Q15** (did not return an explicit
-  refusal for an unsupported question).
-- The lite model is less capable than the primary model, so this is a
-  conservative lower bound on the investigator's planning quality, not a
-  substitute for the primary baseline.
+- Failures: **Q02** and **Q13** (omitted or chose the wrong `metric`), **Q07**
+  (wrong `top_n`) and **Q15** (no explicit refusal for an unsupported question).
+- This run predates the normalisation fix, and the lite model is less capable
+  than the primary model, so treat it as a conservative lower bound.
 
 ## What the baseline measures
 
