@@ -4,7 +4,7 @@
 
 Data Detective is an AI-powered application for investigating datasets with natural-language questions. Upload a CSV, ask a question, and receive findings backed by calculations performed in Python — not invented by a language model.
 
-> **Status:** Day 7 of the DDS build, **deployed**. Everything from Day 6 works. Day 7 delivered the last planned feature — **visualisations** (charts built from computed results, via `src/visualizer.py`) — plus deployment to Streamlit Community Cloud. Live app: https://data-detective-r.streamlit.app/. 281 tests pass offline. Free-tier quota (20 req/day/model) still blocks the authoritative primary-model evaluation run (backup-model run is recorded).
+> **Status:** Final (Day 8). Data Detective is complete and deployed: https://data-detective-r.streamlit.app/. All planned features shipped (profiling, six analytical tools, a planning/validating/executing investigator, a five-metric evaluation harness, safety guardrails, a Streamlit interface with charts, safe logging, and a security review). 281 tests pass offline. The authoritative primary-model evaluation run is still pending the free-tier daily quota; the backup-model run (12/15 plan, 93% tool, 85% parameter, 93% answer, 3/3 faithful) is recorded in `eval/evaluation.md`.
 
 ## What works today
 
