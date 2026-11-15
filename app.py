@@ -64,6 +64,7 @@ def _init_state() -> None:
         "profile": None,
         "report": None,
         "question": "",
+        "investigation_cache": {},
     }
     for key, value in defaults.items():
         st.session_state.setdefault(key, value)
@@ -283,6 +284,7 @@ if use_sample:
         st.session_state["profile"] = None
         st.session_state["report"] = None
         st.session_state["question"] = ""
+        st.session_state["_cached_result"] = False
     except DatasetError as error:
         st.error(f"**Could not load the sample dataset.** {error}")
 
@@ -292,11 +294,15 @@ if uploaded_file is not None:
         try:
             data = load_uploaded_csv(uploaded_file.getvalue())
             st.session_state["data"] = data
-            st.session_state["dataset_name"] = uploaded_file.name
+            # Strip any path components and cap the length: the name is only a
+            # label, never a path, but a hostile filename must not leak through.
+            safe_name = Path(str(uploaded_file.name)).name.strip()[:120] or "dataset.csv"
+            st.session_state["dataset_name"] = safe_name
             st.session_state["dataset_key"] = file_key
             st.session_state["profile"] = None
             st.session_state["report"] = None
             st.session_state["question"] = ""
+            st.session_state["_cached_result"] = False
         except DatasetError as error:
             st.error(f"**Could not read this file.** {error}")
 
@@ -348,6 +354,7 @@ question = st.text_input(
     key="question",
     placeholder="e.g. Which region has the highest average revenue?",
     help="Ask in plain English. The agent handles the rest.",
+    max_chars=2000,
 )
 
 redact_options = [str(c) for c in data.columns]
@@ -369,31 +376,43 @@ run_clicked = st.button(
 )
 
 if run_clicked and not run_disabled:
-    started = time.perf_counter()
-    with st.spinner("Planning the investigation, running the tools and writing the answer…"):
-        report = investigate(
-            str(question).strip(),
-            data,
-            profile=profile,
-            redact_columns=redact or None,
+    clean_question = str(question).strip()
+    cache_key = (clean_question, st.session_state["dataset_key"], tuple(sorted(redact or [])))
+    cache = st.session_state["investigation_cache"]
+    if cache_key in cache:
+        st.session_state["report"] = cache[cache_key]
+        st.session_state["_cached_result"] = True
+    else:
+        started = time.perf_counter()
+        with st.spinner("Planning the investigation, running the tools and writing the answer…"):
+            report = investigate(
+                clean_question,
+                data,
+                profile=profile,
+                redact_columns=redact or None,
+            )
+        latency_ms = int((time.perf_counter() - started) * 1000)
+        st.session_state["report"] = report
+        cache[cache_key] = report
+        st.session_state["_cached_result"] = False
+        log_investigation(
+            LOG_PATH,
+            question=clean_question,
+            report=report,
+            dataset_label=st.session_state["dataset_name"],
+            n_rows=len(data),
+            n_columns=data.shape[1],
+            redact_columns=redact,
+            latency_ms=latency_ms,
         )
-    latency_ms = int((time.perf_counter() - started) * 1000)
-    st.session_state["report"] = report
-    log_investigation(
-        LOG_PATH,
-        question=str(question).strip(),
-        report=report,
-        dataset_label=st.session_state["dataset_name"],
-        n_rows=len(data),
-        n_columns=data.shape[1],
-        redact_columns=redact,
-        latency_ms=latency_ms,
-    )
 
 report = st.session_state["report"]
 if report is not None:
+    if st.session_state.get("_cached_result"):
+        st.caption("Cached result — no new model call was made for this question.")
     render_investigation(report)
     if st.button("Clear the result", key="clear_result"):
         st.session_state["report"] = None
         st.session_state["question"] = ""
+        st.session_state["_cached_result"] = False
         st.rerun()

@@ -86,6 +86,11 @@ FALLBACK_THINKING_LEVEL = "LOW"
 # runaway plan from turning into a long, expensive series of tool calls.
 MAX_STEPS = 5
 
+# Hard cap on the length of a single question. This is a sanity limit, not a
+# security boundary: the model and the prompt builder handle arbitrary text, but
+# an enormous question would only waste tokens and slow the run.
+MAX_QUESTION_LENGTH = 2000
+
 # How many rows of a computed result to show in the report and in the evidence
 # handed back to the model. Enough to see the shape, not the whole table.
 MAX_PREVIEW_ROWS = 20
@@ -1271,6 +1276,12 @@ def investigate(
     if not question.strip():
         return _error_report(question, "Please provide a non-empty question.")
     question = question.strip()
+    if len(question) > MAX_QUESTION_LENGTH:
+        return _error_report(
+            question,
+            f"The question is too long ({len(question)} characters). "
+            f"Please keep it under {MAX_QUESTION_LENGTH} characters.",
+        )
 
     if not isinstance(df, pd.DataFrame):
         return _error_report(

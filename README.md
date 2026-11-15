@@ -4,7 +4,7 @@
 
 Data Detective is an AI-powered application for investigating datasets with natural-language questions. Upload a CSV, ask a question, and receive findings backed by calculations performed in Python — not invented by a language model.
 
-> **Status:** Day 5 of the DDS build. Everything from Day 4 works. Day 5 wires the **investigator** into the Streamlit interface: upload a CSV (or load the sample), ask a question in plain English, and get a report that keeps the computed findings separate from the AI answer. The UI adds example questions derived from the real schema, opt-in PII redaction with sensible defaults, a loading spinner, error states, reset/clear, safe metadata-only activity logging and an offline AppTest smoke suite. 271 tests pass offline. A full backup-model run scores 12/15 plan accuracy; the authoritative primary-model run is pending the free-tier daily quota (see `eval/evaluation.md`).
+> **Status:** Day 6 of the DDS build. Everything from Day 5 works. Day 6 is a hardening pass: input validation and sanitisation (bounded questions and filenames, CSV limits), a secrets-handling review (no keys in the repo), rate-limit and caching considerations (retry/backoff, a per-session investigation cache, cached file loading), a triaged bug list with the fixes applied, and a README/architecture cleanup. A security review lives in `docs/security.md`. 274 tests pass offline. A full backup-model run scores 12/15 plan accuracy; the authoritative primary-model run is pending the free-tier daily quota (see `eval/evaluation.md`).
 
 ## What works today
 
@@ -19,6 +19,7 @@ Data Detective is an AI-powered application for investigating datasets with natu
 - **Safety guardrails**: the model can only name registered tools and declared parameters; plans are grounded to real columns; `redact_columns` keeps chosen fields (e.g. identifiers) out of every prompt; and a check flags statistics in the narrative that no tool computed.
 - **The investigator in the browser**: upload a CSV (or load the sample dataset), ask a question, and get a report that keeps computed findings separate from the AI answer. Example questions are derived from the real schema, PII columns are pre-selected for redaction, and the UI has a loading spinner, error states and reset/clear.
 - **Safe activity logging**: every investigation is appended as one JSON line with metadata only (question, shape, tools, params, status, tokens, latency) — never cell values or the API key.
+- **Security review** (`docs/security.md`): secrets handling (no keys in the repo), input validation and sanitisation, rate limits and caching, a security checklist, a triaged bug list with fixes, and remaining risks.
 - An isolated Gemini Flash client (`src/llm_client.py`) using plain HTTP, with typed errors for authentication, rate limits, timeouts and malformed responses, plus retries on transient overload.
 - Unit tests for the profiling, tools, LLM client, investigator, evaluation, safety, presentation and interface modules (`pytest`, 271 tests). Every LLM-dependent test runs offline against a fake model.
 
@@ -254,7 +255,7 @@ Files are processed in memory. Uploaded datasets are not written to disk or perm
 4. **Small, testable modules.** Data logic lives in `src/`, away from the UI.
 5. **No unnecessary frameworks.** A single agent with reliable tools, not a multi-agent system.
 
-## Data safety
+## Security and data safety
 
 - Do not upload confidential or personally identifiable information during development.
 - Validate uploaded files before processing.
@@ -263,6 +264,7 @@ Files are processed in memory. Uploaded datasets are not written to disk or perm
 - Do not permanently store user datasets.
 - Use public datasets in accordance with their individual licences.
 - Never commit datasets or API credentials.
+- A full security review, checklist and triaged bug list live in `docs/security.md`.
 
 ## Roadmap
 
@@ -279,6 +281,7 @@ Files are processed in memory. Uploaded datasets are not written to disk or perm
 - [x] Safety guardrails: sandbox, column grounding, PII redaction, invented-number check
 - [x] Prompt iteration driven by evaluation failures
 - [x] Investigator wired into the Streamlit interface (loading, errors, reset, safe logging)
+- [x] Security hardening: input validation, secrets review, rate limits and caching, bug triage
 - [ ] Visualisations
 - [ ] Deployment
 

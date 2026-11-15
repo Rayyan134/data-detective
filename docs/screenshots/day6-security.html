@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Data Detective — Day 6 security review</title>
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 36px 24px; font-family: "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    background: linear-gradient(160deg, #0f172a 0%, #1e293b 45%, #0b1220 100%); color: #e2e8f0; }
+  .wrap { max-width: 980px; margin: 0 auto; }
+  .top { display: flex; align-items: center; gap: 14px; margin-bottom: 6px; }
+  .logo { font-size: 34px; } .brand { font-size: 30px; font-weight: 800; color: #f8fafc; letter-spacing: -.5px; }
+  .sub { color: #94a3b8; font-size: 15px; margin: 0 0 24px 52px; }
+  .card { background: #f8fafc; color: #0f172a; border-radius: 16px; padding: 24px 28px 28px;
+    box-shadow: 0 18px 50px rgba(2,6,23,.55); margin-bottom: 20px; border: 1px solid rgba(148,163,184,.25); }
+  .card-label { font-size: 12px; font-weight: 800; letter-spacing: 1.4px; text-transform: uppercase; color: #475569;
+    margin: 0 0 14px; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .tag { font-size: 11px; font-weight: 600; letter-spacing: .3px; text-transform: none; background: #e0e7ff; color: #3730a3; padding: 2px 9px; border-radius: 999px; }
+  .tag-green { background: #dcfce7; color: #166534; }
+  .tag-amber { background: #fef3c7; color: #92400e; }
+  .headline { font-size: 20px; line-height: 1.35; margin: 0 0 14px; color: #0f172a; }
+  .headline b { color: #4f46e5; }
+  .check { display: flex; align-items: flex-start; gap: 10px; padding: 6px 0; font-size: 13.5px; color: #0f172a; border-bottom: 1px solid #e2e8f0; }
+  .check:last-child { border-bottom: none; }
+  .check .box { color: #166534; font-weight: 800; flex-shrink: 0; }
+  .check .txt { line-height: 1.4; }
+  .check .note { font-size: 12px; color: #64748b; margin-top: 2px; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th { text-align: left; color: #475569; font-size: 11.5px; text-transform: uppercase; letter-spacing: .6px; padding: 6px 10px; border-bottom: 2px solid #cbd5e1; }
+  td { padding: 9px 10px; border-bottom: 1px solid #e2e8f0; vertical-align: top; }
+  td.id { color: #4f46e5; font-weight: 700; width: 44px; }
+  td.fix { color: #166534; }
+  tr:last-child td { border-bottom: none; }
+  .risk { background: #fff; border: 1px solid #e2e8f0; border-radius: 10px; padding: 11px 14px; margin: 6px 0; font-size: 13px; color: #334155; }
+  .risk b { color: #0f172a; }
+  .foot { color: #94a3b8; font-size: 13px; display: flex; gap: 22px; flex-wrap: wrap; margin-top: 6px; }
+  .foot b { color: #e2e8f0; }
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="top"><span class="logo">🔍</span><span class="brand">Data Detective</span></div>
+    <p class="sub">Autonomous AI data investigation agent — every number computed in Python, never invented by the model</p>
+
+    <section class="card">
+      <div class="card-label">Day 6 · Security & debugging <span class="tag">hardening pass</span>
+        <span class="tag tag-green">274 tests passing</span></div>
+      <p class="headline">A review of the attack surface, not a new feature: <b>no secrets in the repo</b>,
+        bounded inputs, rate-limit handling, a per-session cache, and a triaged bug list with the fixes applied.</p>
+
+      <div class="check"><span class="box">☑</span><div class="txt">No secrets in the repository<span class="note">`git grep` for key-shaped strings returns only the placeholder in `.env.example`.</span></div></div>
+      <div class="check"><span class="box">☑</span><div class="txt">`.env` ignored; `.env.example` committed with placeholders<span class="note">`.streamlit/secrets.toml` is ignored too.</span></div></div>
+      <div class="check"><span class="box">☑</span><div class="txt">User input validated and bounded<span class="note">CSV limits, a 2000-char question cap, filenames reduced to their basename.</span></div></div>
+      <div class="check"><span class="box">☑</span><div class="txt">Model output validated before execution<span class="note">Tool, parameters and columns are checked by `validate_plan`.</span></div></div>
+      <div class="check"><span class="box">☑</span><div class="txt">Prompt injection cannot widen the plan<span class="note">A hostile question still comes back as a clean error report.</span></div></div>
+      <div class="check"><span class="box">☑</span><div class="txt">PII redaction is opt-in and value-free<span class="note">No value from a redacted column reaches any prompt or evidence table.</span></div></div>
+      <div class="check"><span class="box">☑</span><div class="txt">Activity log contains metadata only<span class="note">No cell values, no API key — verified by test.</span></div></div>
+      <div class="check"><span class="box">☐</span><div class="txt">Shared rate limiter for multi-instance deploys<span class="note">Out of scope for the single-instance demo.</span></div></div>
+    </section>
+
+    <section class="card">
+      <div class="card-label">Top bugs fixed <span class="tag tag-green">6 items</span></div>
+      <table>
+        <thead><tr><th>#</th><th>Defect</th><th>Fix</th></tr></thead>
+        <tbody>
+          <tr><td class="id">1</td><td>Leaked reasoning text in a parameter value (Day 3).</td><td class="fix">Normalise a value back to a known token before the strict check; non-matching values still rejected.</td></tr>
+          <tr><td class="id">2</td><td>Silent mean default when `metric` was omitted (Day 4).</td><td class="fix">Planning prompt demands an explicit statistic with a total/average/median mapping.</td></tr>
+          <tr><td class="id">3</td><td>No refusal on out-of-scope questions (Day 4).</td><td class="fix">Prompt forbids substituting a different column; verified live (Q15).</td></tr>
+          <tr><td class="id">4</td><td>Malformed JSON bodies (Day 4).</td><td class="fix">Retry once on `LLMResponseError` before giving up.</td></tr>
+          <tr><td class="id">5</td><td>Over-strict test expectation on Q07.</td><td class="fix">Relaxed `top_n` assertion; documented why it is not asserted.</td></tr>
+          <tr><td class="id">6</td><td>Interface had no automated coverage.</td><td class="fix">AppTest smoke suite for empty state, sample load, full run and failure surfacing.</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section class="card">
+      <div class="card-label">Remaining risks <span class="tag tag-amber">honest list</span></div>
+      <div class="risk"><b>Free-tier quota:</b> 20 requests/day/model; the authoritative primary-model run is still pending.</div>
+      <div class="risk"><b>Latency:</b> p95 ~15s, UI shows only a spinner (no cancellation or per-step progress).</div>
+      <div class="risk"><b>Visualisations:</b> not implemented yet.</div>
+      <div class="risk"><b>Deployment:</b> public URL is outstanding (Day 7); the demo is local-only today.</div>
+      <div class="risk"><b>Honesty check:</b> best-effort string matching; flagged numbers are surfaced, never presented as evidence.</div>
+      <div class="risk"><b>Redaction:</b> opt-in; a user who skips it sends the column's values to the model.</div>
+    </section>
+
+    <div class="foot">
+      <span>Model <b>gemini-3.1-flash-lite</b> (backup)</span>
+      <span>Tests <b>274 passing</b></span>
+      <span>Security doc <b>docs/security.md</b></span>
+      <span>Quota <b>20 req/day/model</b></span>
+    </div>
+  </div>
+</body>
+</html>
