@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Data Detective — Day 5 interface</title>
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    background: #0e1117; color: #fafafa; }
+  .layout { display: grid; grid-template-columns: 260px 1fr; min-height: 100vh; }
+  .side { background: #262730; padding: 22px 18px; border-right: 1px solid #3a3b47; }
+  .side h2 { font-size: 16px; margin: 0 0 6px; color: #fafafa; }
+  .side p { font-size: 12.5px; line-height: 1.5; color: #b0b3c6; margin: 0 0 14px; }
+  .side .limits { font-size: 12px; color: #b0b3c6; margin: 4px 0; }
+  .side hr { border: none; border-top: 1px solid #3a3b47; margin: 14px 0; }
+  .side .caption { font-size: 11.5px; color: #7d8096; }
+  .main { padding: 26px 34px 40px; max-width: 980px; }
+  .title { font-size: 34px; font-weight: 700; margin: 0 0 4px; }
+  .sub { color: #b0b3c6; font-size: 15px; margin: 0 0 18px; }
+  .card { background: #262730; border: 1px solid #3a3b47; border-radius: 10px;
+    padding: 18px 20px; margin-bottom: 16px; }
+  .metrics { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin: 12px 0; }
+  .metric { background: #1a1c24; border-radius: 8px; padding: 10px 12px; }
+  .metric .v { font-size: 22px; font-weight: 700; color: #fafafa; }
+  .metric .l { font-size: 11px; text-transform: uppercase; letter-spacing: .6px; color: #7d8096; margin-top: 2px; }
+  .warn { background: #3a2f1a; border: 1px solid #6b5a2a; color: #f7d98b; border-radius: 8px; padding: 10px 12px; font-size: 13px; margin: 10px 0; }
+  .ok { background: #1a3a2a; border: 1px solid #2a6b4a; color: #86efac; border-radius: 8px; padding: 10px 12px; font-size: 13px; margin: 10px 0; }
+  .chips { display: flex; gap: 8px; flex-wrap: wrap; margin: 8px 0 12px; }
+  .chip { background: #1a1c24; border: 1px solid #3a3b47; border-radius: 999px;
+    padding: 6px 12px; font-size: 12.5px; color: #c9cbda; }
+  .input { background: #1a1c24; border: 1px solid #3a3b47; border-radius: 8px;
+    padding: 10px 12px; color: #fafafa; font-size: 14px; margin: 6px 0 12px; }
+  .btn { background: #ff4b4b; color: #fff; border: none; border-radius: 8px;
+    padding: 9px 16px; font-size: 14px; font-weight: 600; display: inline-block; }
+  .btn-sec { background: #262730; color: #fafafa; border: 1px solid #3a3b47; border-radius: 8px; padding: 7px 12px; font-size: 13px; display: inline-block; margin-top: 8px; }
+  h3 { font-size: 18px; margin: 18px 0 6px; }
+  h4 { font-size: 15px; margin: 14px 0 4px; color: #fafafa; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; margin: 8px 0; }
+  th { text-align: left; color: #b0b3c6; font-size: 11.5px; text-transform: uppercase; letter-spacing: .5px; padding: 6px 8px; border-bottom: 1px solid #3a3b47; }
+  td { padding: 6px 8px; border-bottom: 1px solid #2a2b35; color: #e2e4ee; }
+  .expander { background: #1a1c24; border: 1px solid #3a3b47; border-radius: 8px; padding: 10px 12px; margin: 8px 0; font-size: 12.5px; color: #b0b3c6; }
+  .code { background: #0b0d12; border: 1px solid #3a3b47; border-radius: 8px; padding: 10px 12px; font-family: "Consolas", monospace; font-size: 12px; color: #c9cbda; white-space: pre-wrap; margin: 8px 0; }
+  .caption { font-size: 12px; color: #7d8096; margin: 4px 0 10px; }
+  .badge { display: inline-block; background: #1a3a2a; color: #86efac; border-radius: 999px; padding: 2px 8px; font-size: 11.5px; font-weight: 600; margin-left: 8px; }
+</style>
+</head>
+<body>
+  <div class="layout">
+    <aside class="side">
+      <h2>About</h2>
+      <p>Data Detective profiles a CSV dataset and investigates it with an AI agent. Every number in the findings is computed by Python; the model only plans the analysis and writes the narrative.</p>
+      <h2>Input limits</h2>
+      <div class="limits">Max rows: <b>100,000</b></div>
+      <div class="limits">Max columns: <b>200</b></div>
+      <div class="limits">Encoding: <b>UTF-8</b></div>
+      <div class="limits">Format: <b>.csv</b></div>
+      <h2>Privacy</h2>
+      <p>Files are processed in memory for this session only. Activity is logged as metadata only (no data values, no API key).</p>
+      <hr>
+      <div class="caption">Day 5 build: the investigator is connected to the interface.</div>
+    </aside>
+
+    <main class="main">
+      <div class="title">🔍 Data Detective</div>
+      <div class="sub">Upload a CSV dataset to inspect it, then ask a question in plain English. The agent plans the analysis, runs predefined tools and reports evidence-backed findings.</div>
+
+      <div class="card">
+        <div style="font-weight:600;margin-bottom:6px;">sample_sales.csv</div>
+        <div class="caption">sample_sales.csv (180 rows × 11 columns)</div>
+        <div class="metrics">
+          <div class="metric"><div class="v">180</div><div class="l">Rows</div></div>
+          <div class="metric"><div class="v">11</div><div class="l">Columns</div></div>
+          <div class="metric"><div class="v">11</div><div class="l">Missing cells</div></div>
+          <div class="metric"><div class="v">0</div><div class="l">Duplicate rows</div></div>
+        </div>
+        <div class="ok">No data-quality warnings were detected in this dataset.</div>
+      </div>
+
+      <h3>Ask a question about this dataset</h3>
+      <div class="caption">The model plans; Python computes. Findings and the AI answer are shown separately below.</div>
+      <div class="caption">Try one of these:</div>
+      <div class="chips">
+        <span class="chip">Compare revenue across region</span>
+        <span class="chip">How has revenue changed over time?</span>
+        <span class="chip">Is revenue correlated with units?</span>
+        <span class="chip">Which rows are outliers in revenue?</span>
+      </div>
+      <div class="input">Which channel is most common?</div>
+      <div class="caption">Columns to keep away from the model (optional): order_id (pre-selected)</div>
+      <span class="btn">Investigate</span>
+
+      <div class="ok" style="margin-top:16px;"><b>Investigation complete</b><br>The findings below were computed in Python. The answer is the model's reading of those findings, not a source of new numbers.</div>
+
+      <div class="expander">
+        <b>Plan (AI-generated, then validated)</b><br>
+        1. <code>value_counts_table</code> {"column": "channel"} — count how often each channel appears
+      </div>
+
+      <h4>Findings (computed in Python)</h4>
+      <div style="font-weight:600;margin:6px 0 2px;">Step 1 — value_counts_table</div>
+      <div class="caption">Count how often each channel appears</div>
+      <div class="caption">Parameters: <code>{"column": "channel"}</code></div>
+      <table>
+        <thead><tr><th>channel</th><th>count</th></tr></thead>
+        <tbody>
+          <tr><td>Online</td><td>94</td></tr>
+          <tr><td>Retail</td><td>52</td></tr>
+          <tr><td>Wholesale</td><td>34</td></tr>
+        </tbody>
+      </table>
+
+      <h4>Answer (AI interpretation — not independently verified)</h4>
+      <p style="margin:4px 0;">Online is the most common channel, accounting for just over half of all orders. Retail is a clear second and Wholesale a distant third.</p>
+      <div class="caption">Confidence: high</div>
+
+      <span class="btn-sec">Clear the result</span>
+      <span class="btn-sec" style="margin-left:8px;">Download report (.md)</span>
+    </main>
+  </div>
+</body>
+</html>

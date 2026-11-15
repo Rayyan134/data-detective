@@ -4,7 +4,7 @@
 
 Data Detective is an AI-powered application for investigating datasets with natural-language questions. Upload a CSV, ask a question, and receive findings backed by calculations performed in Python — not invented by a language model.
 
-> **Status:** Day 4 of the DDS build. Everything from Day 3 works (CSV loading, profiling, six analytical tools, an isolated live-tested Gemini REST client, and the **investigator** — the agent layer that plans an investigation, validates it, runs the tools and writes an evidence-backed report). Day 4 adds a real **evaluation harness** that scores tool, parameter, refusal and answer accuracy plus faithfulness, **latency and token/cost** measurement, **safety guardrails** (sandbox, column grounding, opt-in PII redaction, an invented-number check) and two **prompt fixes** driven by the failures it found. 232 tests pass offline. A full backup-model run scores 12/15 plan accuracy; the authoritative primary-model run is pending the free-tier daily quota (see `eval/evaluation.md`).
+> **Status:** Day 5 of the DDS build. Everything from Day 4 works. Day 5 wires the **investigator** into the Streamlit interface: upload a CSV (or load the sample), ask a question in plain English, and get a report that keeps the computed findings separate from the AI answer. The UI adds example questions derived from the real schema, opt-in PII redaction with sensible defaults, a loading spinner, error states, reset/clear, safe metadata-only activity logging and an offline AppTest smoke suite. 271 tests pass offline. A full backup-model run scores 12/15 plan accuracy; the authoritative primary-model run is pending the free-tier daily quota (see `eval/evaluation.md`).
 
 ## What works today
 
@@ -17,8 +17,10 @@ Data Detective is an AI-powered application for investigating datasets with natu
 - A 15-question evaluation set with hand-checked expected answers and machine-checkable answer checks (`eval/questions.json`).
 - An **evaluation harness** (`src/evaluation.py` + `eval/score_investigator.py`) that measures tool accuracy, parameter accuracy, refusal accuracy, answer accuracy and faithfulness, and records latency, tokens and (optionally) cost.
 - **Safety guardrails**: the model can only name registered tools and declared parameters; plans are grounded to real columns; `redact_columns` keeps chosen fields (e.g. identifiers) out of every prompt; and a check flags statistics in the narrative that no tool computed.
+- **The investigator in the browser**: upload a CSV (or load the sample dataset), ask a question, and get a report that keeps computed findings separate from the AI answer. Example questions are derived from the real schema, PII columns are pre-selected for redaction, and the UI has a loading spinner, error states and reset/clear.
+- **Safe activity logging**: every investigation is appended as one JSON line with metadata only (question, shape, tools, params, status, tokens, latency) — never cell values or the API key.
 - An isolated Gemini Flash client (`src/llm_client.py`) using plain HTTP, with typed errors for authentication, rate limits, timeouts and malformed responses, plus retries on transient overload.
-- Unit tests for the profiling, tools, LLM client, investigator, evaluation and safety modules (`pytest`, 232 tests). Every investigator test runs offline against a fake model.
+- Unit tests for the profiling, tools, LLM client, investigator, evaluation, safety, presentation and interface modules (`pytest`, 271 tests). Every LLM-dependent test runs offline against a fake model.
 
 ## Analytical tools
 
@@ -127,6 +129,8 @@ data-detective/
 │   ├── llm_client.py       # Isolated Gemini REST client (the only LLM code)
 │   ├── investigator.py     # Agent: plan -> validate -> execute -> evidence report
 │   ├── evaluation.py       # Offline scoring: metrics, answer checks, usage recording
+│   ├── ui_report.py        # Presentation helpers turning a report into UI data
+│   ├── audit.py            # Safe, metadata-only investigation logging
 │   └── visualizer.py       # Planned: charts from computed results
 ├── tests/
 │   ├── test_profiler.py    # Unit tests for src/profiler.py
@@ -135,7 +139,10 @@ data-detective/
 │   ├── test_llm_client.py  # Unit tests for src/llm_client.py (no network)
 │   ├── test_investigator.py# Unit tests for src/investigator.py (no network)
 │   ├── test_evaluation.py  # Unit tests for src/evaluation.py (no network)
-│   └── test_safety.py      # Sandbox, grounding, redaction and honesty guardrails
+│   ├── test_safety.py      # Sandbox, grounding, redaction and honesty guardrails
+│   ├── test_ui_report.py   # Presentation helpers (no Streamlit, no network)
+│   ├── test_audit.py       # Safe logging (no network)
+│   └── test_app.py         # Streamlit interface smoke tests (AppTest, no browser)
 ├── eval/
 │   ├── questions.json      # Fixed question set with expected answers + answer checks
 │   ├── score_investigator.py  # Runs the question set and writes a metrics report
@@ -271,8 +278,8 @@ Files are processed in memory. Uploaded datasets are not written to disk or perm
 - [x] Latency, token and cost measurement
 - [x] Safety guardrails: sandbox, column grounding, PII redaction, invented-number check
 - [x] Prompt iteration driven by evaluation failures
+- [x] Investigator wired into the Streamlit interface (loading, errors, reset, safe logging)
 - [ ] Visualisations
-- [ ] Wire the investigator into the Streamlit interface
 - [ ] Deployment
 
 ## Challenge
