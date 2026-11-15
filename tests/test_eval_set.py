@@ -55,5 +55,30 @@ def test_available_tools_match_the_registry(exam):
     assert set(exam["available_tools"]) == set(TOOL_REGISTRY)
 
 
+def _checks(question: dict) -> list[dict]:
+    check = question.get("check")
+    return check if isinstance(check, list) else [check]
+
+
+def test_every_question_has_a_machine_checkable_answer(exam):
+    for item in exam["questions"]:
+        checks = _checks(item)
+        assert checks, f"{item['id']} has no check"
+        for check in checks:
+            assert check["kind"] in exam["check_kinds"], f"{item['id']}: {check['kind']}"
+
+
+def test_refusal_questions_use_the_refuse_check(exam):
+    for item in exam["questions"]:
+        if item["expected_tool"] is None:
+            assert all(check["kind"] == "refuse" for check in _checks(item)), item["id"]
+
+
+def test_supported_questions_do_not_use_the_refuse_check(exam):
+    for item in exam["questions"]:
+        if item["expected_tool"] is not None:
+            assert all(check["kind"] != "refuse" for check in _checks(item)), item["id"]
+
+
 def test_referenced_dataset_exists(exam):
     assert (PROJECT_ROOT / exam["dataset"]).is_file()

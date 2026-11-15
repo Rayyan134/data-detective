@@ -1,7 +1,16 @@
 {
   "dataset": "data/sample_sales.csv",
   "created": "2026-11-13",
-  "purpose": "Fixed question set used to measure how reliably the investigator plans and selects tools. Expected answers were computed with the tools in src/tools.py and checked by hand, so they can be compared against the agent's output.",
+  "updated": "2026-11-15",
+  "purpose": "Fixed question set used to measure how reliably the investigator plans, selects tools and answers. Expected answers were computed with the tools in src/tools.py and checked by hand. Each question also carries a machine-checkable 'check' that is applied to the agent's computed findings, so answer correctness can be scored automatically and not just the chosen tool.",
+  "check_kinds": {
+    "top_row": "row with the max/min of value_column; its group_column must equal expected",
+    "cell": "row where group_column == group_value; its value_column must equal expected",
+    "matrix_cell": "correlation matrix entry at [row, column] must equal expected",
+    "cell_value": "first row's value in column must equal expected",
+    "row_count": "the result must have exactly expected rows",
+    "refuse": "the plan must be explicitly unsupported"
+  },
   "available_tools": [
     "group_comparison",
     "correlation",
@@ -17,6 +26,7 @@
       "expected_tool": "group_comparison",
       "expected_params": { "group_column": "region", "value_column": "revenue", "metric": "mean" },
       "expected_answer_hint": "East, with a mean of 912.01. Note the nuance: North has the highest median (544.38), so East's mean is inflated by a few very large orders.",
+      "check": { "kind": "top_row", "group_column": "region", "value_column": "mean", "mode": "max", "expected": "East" },
       "notes": "Tests basic grouping plus awareness that mean and median can disagree."
     },
     {
@@ -25,6 +35,7 @@
       "expected_tool": "group_comparison",
       "expected_params": { "group_column": "product", "value_column": "revenue", "metric": "sum" },
       "expected_answer_hint": "Pro 49,148.60 from 61 orders; Enterprise 45,039.55 from only 30 orders; Basic 39,713.27 from 89 orders.",
+      "check": { "kind": "cell", "group_column": "product", "group_value": "Pro", "value_column": "sum", "expected": 49148.6, "tolerance": 0.01 },
       "notes": "Totals hide per-order differences; Enterprise earns almost as much from far fewer orders."
     },
     {
@@ -33,6 +44,7 @@
       "expected_tool": "correlation",
       "expected_params": { "columns": ["discount_pct", "revenue"] },
       "expected_answer_hint": "r = -0.118, essentially no linear relationship. It must not be described as a strong effect.",
+      "check": { "kind": "matrix_cell", "row": "discount_pct", "column": "revenue", "expected": -0.118, "tolerance": 0.005 },
       "notes": "Tests honest reporting of a weak result."
     },
     {
@@ -41,6 +53,10 @@
       "expected_tool": "trend_over_time",
       "expected_params": { "date_column": "order_date", "value_column": "revenue", "freq": "ME" },
       "expected_answer_hint": "Eight months. Rises from 13,921.07 in January to 19,733.21 in April, falls 32.1% in June, peaks at 20,024.78 in July, ends at 15,675.93 in August. Not a steady trend.",
+      "check": [
+        { "kind": "row_count", "expected": 8 },
+        { "kind": "top_row", "group_column": "period", "value_column": "total", "mode": "max", "expected": "2025-07-31" }
+      ],
       "notes": "Tests period aggregation and reporting volatility rather than a single direction."
     },
     {
@@ -49,23 +65,29 @@
       "expected_tool": "find_outliers",
       "expected_params": { "column": "revenue", "multiplier": 1.5 },
       "expected_answer_hint": "10 outliers above the upper bound of 2,084.13, led by ORD-0113 at 4,732.80.",
+      "check": [
+        { "kind": "cell_value", "column": "iqr_upper_bound", "expected": 2084.13, "tolerance": 0.01 },
+        { "kind": "row_count", "expected": 10 }
+      ],
       "notes": "Tests IQR outlier detection and quoting the bound as evidence."
     },
     {
       "id": "Q06",
       "question": "Which sales channel is used most often?",
       "expected_tool": "value_counts_table",
-      "expected_params": { "column": "channel", "top_n": 10 },
+      "expected_params": { "column": "channel" },
       "expected_answer_hint": "Online: 94 orders (52.2%), then Retail 66 (36.7%), Partner 20 (11.1%).",
-      "notes": "Simple frequency question; a fast baseline check."
+      "check": { "kind": "top_row", "group_column": "channel", "value_column": "count", "mode": "max", "expected": "Online" },
+      "notes": "Simple frequency question; a fast baseline check. top_n is not asserted: it only caps how many categories are shown and does not change the answer."
     },
     {
       "id": "Q07",
       "question": "Which product is ordered most often?",
       "expected_tool": "value_counts_table",
-      "expected_params": { "column": "product", "top_n": 10 },
+      "expected_params": { "column": "product" },
       "expected_answer_hint": "Basic: 89 orders (49.4%), then Pro 61 (33.9%), Enterprise 30 (16.7%).",
-      "notes": "Checks the agent picks a frequency tool, not a grouping tool."
+      "check": { "kind": "top_row", "group_column": "product", "value_column": "count", "mode": "max", "expected": "Basic" },
+      "notes": "Checks the agent picks a frequency tool, not a grouping tool. top_n is not asserted: with three products any top_n >= 1 gives the same answer."
     },
     {
       "id": "Q08",
@@ -73,6 +95,7 @@
       "expected_tool": "missing_by_group",
       "expected_params": { "group_column": "region", "target_column": "satisfaction" },
       "expected_answer_hint": "West: 7 of 39 rows missing (17.9%), against 2.1% or less elsewhere.",
+      "check": { "kind": "top_row", "group_column": "region", "value_column": "missing_pct", "mode": "max", "expected": "West" },
       "notes": "Tests missingness analysis grouped by category."
     },
     {
@@ -81,6 +104,7 @@
       "expected_tool": "correlation",
       "expected_params": { "columns": ["discount_pct", "units"] },
       "expected_answer_hint": "r = 0.049, no meaningful relationship. The correct answer is that the data does not support the idea.",
+      "check": { "kind": "matrix_cell", "row": "discount_pct", "column": "units", "expected": 0.049, "tolerance": 0.005 },
       "notes": "Tests resistance to confirming a plausible-sounding hypothesis."
     },
     {
@@ -89,6 +113,7 @@
       "expected_tool": "group_comparison",
       "expected_params": { "group_column": "product", "value_column": "satisfaction", "metric": "mean" },
       "expected_answer_hint": "Pro 4.289, Basic 4.197, Enterprise 4.144. The spread is under 0.15 and missing values reduce the counts.",
+      "check": { "kind": "top_row", "group_column": "product", "value_column": "mean", "mode": "max", "expected": "Pro" },
       "notes": "Tests reporting a difference that is real but tiny, plus awareness of missing values."
     },
     {
@@ -97,6 +122,7 @@
       "expected_tool": "trend_over_time",
       "expected_params": { "date_column": "order_date", "value_column": "revenue", "freq": "ME" },
       "expected_answer_hint": "July 2025, with 20,024.78.",
+      "check": { "kind": "top_row", "group_column": "period", "value_column": "total", "mode": "max", "expected": "2025-07-31" },
       "notes": "Requires computing the trend and then selecting the maximum."
     },
     {
@@ -105,6 +131,7 @@
       "expected_tool": "correlation",
       "expected_params": { "columns": ["units", "revenue"] },
       "expected_answer_hint": "r = 0.703, a strong positive relationship, which is expected because revenue is calculated from units.",
+      "check": { "kind": "matrix_cell", "row": "units", "column": "revenue", "expected": 0.703, "tolerance": 0.005 },
       "notes": "Tests whether the agent notices a near-mechanical relationship instead of treating it as an insight."
     },
     {
@@ -113,6 +140,7 @@
       "expected_tool": "group_comparison",
       "expected_params": { "group_column": "channel", "value_column": "revenue", "metric": "median" },
       "expected_answer_hint": "Retail 461.34, then Partner 442.59, then Online 430.74. By mean, Online ranks first instead, so the choice of statistic matters.",
+      "check": { "kind": "top_row", "group_column": "channel", "value_column": "median", "mode": "max", "expected": "Retail" },
       "notes": "Deliberate mean-versus-median trap."
     },
     {
@@ -122,6 +150,7 @@
       "expected_params": {},
       "expected_behavior": "refuse_or_explain",
       "expected_answer_hint": "trend_over_time cannot split by group, so no tool answers this. The correct behaviour is to say the analysis is not supported yet, not to guess.",
+      "check": { "kind": "refuse" },
       "notes": "Out-of-scope question used to test graceful refusal. A grouped-trend tool is a possible Day 6 improvement."
     },
     {
@@ -131,6 +160,7 @@
       "expected_params": {},
       "expected_behavior": "refuse_or_explain",
       "expected_answer_hint": "The dataset has no customer or segment column. The correct behaviour is to refuse and list the available columns.",
+      "check": { "kind": "refuse" },
       "notes": "Tests that the agent checks the schema before planning."
     }
   ]
