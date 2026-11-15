@@ -16,7 +16,7 @@ What shipped today:
 • Deployment prep: a Streamlit theme config, a `Dockerfile`, and `docs/deployment.md` with step-by-step Streamlit Cloud instructions, a smoke-test checklist, performance notes and a fallback plan.
 
 Honest notes:
-• The public URL is not live yet — Streamlit Community Cloud needs an interactive sign-in I can't perform. The app runs locally with `streamlit run app.py`, and every screen is captured under `docs/screenshots/`.
+• The app is live: https://data-detective-r.streamlit.app/ (Streamlit Community Cloud). It also runs locally with `streamlit run app.py`, and every screen is captured under `docs/screenshots/`.
 • Free-tier quota (20 req/day/model) still blocks the authoritative primary-model evaluation run.
 • 281 tests pass offline.
 
@@ -29,5 +29,5 @@ Code: https://github.com/Rayyan134/data-detective
 ## Notes for the author
 
 - Screenshot is the Day 7 visualisations/deployment card (`docs/screenshots/day7-visualizations.html` → PNG).
-- Deployment steps live in `docs/deployment.md`; the user performs the Streamlit Cloud sign-in.
+- The app is live at https://data-detective-r.streamlit.app/ (deployed 2026-11-15).
 - Day 8 will be the final submission + LinkedIn sharing.
