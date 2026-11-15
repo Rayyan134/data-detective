@@ -133,6 +133,7 @@ def finding_sections(report: InvestigationReport) -> list[dict[str, Any]]:
         sections.append(
             {
                 "title": f"Step {index} — {step.tool}",
+                "tool": step.tool,
                 "purpose": step.purpose,
                 "params": step.params,
                 "frame": step.result if step.ok else None,
