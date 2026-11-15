@@ -1,5 +1,9 @@
 # Deployment (Day 7)
 
+## Live deployment
+
+**URL:** https://data-detective-r.streamlit.app/ (Streamlit Community Cloud, deployed 2026-11-15)
+
 ## Chosen target
 
 **Streamlit Community Cloud** — free, deploys directly from the public GitHub

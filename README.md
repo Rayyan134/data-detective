@@ -4,7 +4,7 @@
 
 Data Detective is an AI-powered application for investigating datasets with natural-language questions. Upload a CSV, ask a question, and receive findings backed by calculations performed in Python — not invented by a language model.
 
-> **Status:** Day 7 of the DDS build. Everything from Day 6 works. Day 7 delivers the last planned feature — **visualisations** (charts built from computed results, via `src/visualizer.py`) — plus deployment preparation: a Streamlit theme config, a `Dockerfile`, and `docs/deployment.md` with step-by-step Streamlit Cloud instructions, a smoke-test checklist, performance notes and a fallback plan. 281 tests pass offline. The actual public deploy needs an interactive Streamlit Cloud sign-in (see `docs/deployment.md`); the app runs locally with `streamlit run app.py`.
+> **Status:** Day 7 of the DDS build, **deployed**. Everything from Day 6 works. Day 7 delivered the last planned feature — **visualisations** (charts built from computed results, via `src/visualizer.py`) — plus deployment to Streamlit Community Cloud. Live app: https://data-detective-r.streamlit.app/. 281 tests pass offline. Free-tier quota (20 req/day/model) still blocks the authoritative primary-model evaluation run (backup-model run is recorded).
 
 ## What works today
 
@@ -286,8 +286,7 @@ Files are processed in memory. Uploaded datasets are not written to disk or perm
 - [x] Investigator wired into the Streamlit interface (loading, errors, reset, safe logging)
 - [x] Security hardening: input validation, secrets review, rate limits and caching, bug triage
 - [x] Visualisations: charts built from computed results (altair)
-- [x] Deployment prepared: Streamlit Cloud steps, Dockerfile, smoke-test checklist (public URL needs an interactive sign-in)
-- [ ] Deployment live (Day 7/8)
+- [x] Deployment live: https://data-detective-r.streamlit.app/ (Streamlit Community Cloud)
 
 ## Deployment
 
@@ -295,7 +294,7 @@ The app is deployment-ready but the public URL needs an interactive Streamlit Cl
 sign-in. Full steps, a smoke-test checklist, performance notes and a fallback plan
 live in [`docs/deployment.md`](docs/deployment.md).
 
-- **Target:** Streamlit Community Cloud (free, deploys from this public repo).
+- **Live app:** https://data-detective-r.streamlit.app/ (Streamlit Community Cloud).
 - **Local run:** `streamlit run app.py` (opens http://localhost:8501).
 - **Container:** `docker build -t data-detective . && docker run -p 8501:8501 -e GEMINI_API_KEY=... data-detective`.
 - **Secrets:** set `GEMINI_API_KEY` (and optionally `GEMINI_MODEL`) in the platform's secrets; `.streamlit/secrets.toml` is git-ignored.
