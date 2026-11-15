@@ -4,7 +4,7 @@
 
 Data Detective is an AI-powered application for investigating datasets with natural-language questions. Upload a CSV, ask a question, and receive findings backed by calculations performed in Python — not invented by a language model.
 
-> **Status:** Day 3 of the DDS build. CSV loading, profiling, six analytical tools, an isolated live-tested Gemini REST client, and the **investigator** — the agent layer that plans an investigation, validates it, runs the tools and writes an evidence-backed report — are all working (173 tests). A first baseline scored the primary model at 9/15, where all six misses were one model-output defect; that defect is now fixed and the fix is verified live, with the full post-fix re-score pending the free-tier daily quota (see `eval/baseline.md`).
+> **Status:** Day 4 of the DDS build. Everything from Day 3 works (CSV loading, profiling, six analytical tools, an isolated live-tested Gemini REST client, and the **investigator** — the agent layer that plans an investigation, validates it, runs the tools and writes an evidence-backed report). Day 4 adds a real **evaluation harness** that scores tool, parameter, refusal and answer accuracy plus faithfulness, **latency and token/cost** measurement, **safety guardrails** (sandbox, column grounding, opt-in PII redaction, an invented-number check) and two **prompt fixes** driven by the failures it found. 232 tests pass offline. A full backup-model run scores 12/15 plan accuracy; the authoritative primary-model run is pending the free-tier daily quota (see `eval/evaluation.md`).
 
 ## What works today
 
@@ -14,9 +14,11 @@ Data Detective is an AI-powered application for investigating datasets with natu
 - Automatic data-quality warnings (columns with heavy missingness, constant columns, unnamed columns).
 - Six deterministic analytical tools (see below) exposed through a tool registry.
 - **An autonomous investigator** (`src/investigator.py`) that turns a natural-language question into a validated plan of tool calls, executes them in Python and reports evidence-backed findings.
-- A 15-question evaluation set with hand-checked expected answers (`eval/questions.json`) and a scoring script (`eval/score_investigator.py`).
+- A 15-question evaluation set with hand-checked expected answers and machine-checkable answer checks (`eval/questions.json`).
+- An **evaluation harness** (`src/evaluation.py` + `eval/score_investigator.py`) that measures tool accuracy, parameter accuracy, refusal accuracy, answer accuracy and faithfulness, and records latency, tokens and (optionally) cost.
+- **Safety guardrails**: the model can only name registered tools and declared parameters; plans are grounded to real columns; `redact_columns` keeps chosen fields (e.g. identifiers) out of every prompt; and a check flags statistics in the narrative that no tool computed.
 - An isolated Gemini Flash client (`src/llm_client.py`) using plain HTTP, with typed errors for authentication, rate limits, timeouts and malformed responses, plus retries on transient overload.
-- Unit tests for the profiling, tools, LLM client and investigator modules (`pytest`, 173 tests). Every investigator test runs offline against a fake model.
+- Unit tests for the profiling, tools, LLM client, investigator, evaluation and safety modules (`pytest`, 232 tests). Every investigator test runs offline against a fake model.
 
 ## Analytical tools
 
@@ -63,20 +65,30 @@ question + dataset + profile
 - The model never sees the dataset itself — only its schema and profile. Prompts are capped in size and contain no whole columns.
 - A plan that names an unknown tool, an unknown parameter, a missing required parameter, a wrong type, or a column that does not exist is **rejected before anything runs** (`PlanError`).
 - Structured output is **normalised before the strict check**: the model occasionally appends its own reasoning text to the end of a string field (e.g. `"revenue metric: mean"`), so a value that starts with a known column or enum value is snapped back to it. Values that do not start with a known token are still rejected, and every normalisation is shown in the report under "Normalised parameters".
+- Two transient model failures are retried once: a **timeout** (retried at the lower thinking level, which is faster) and a **malformed JSON body** (a sampling glitch, retried once before giving up).
+- **Sensitive columns can be redacted.** Pass `redact_columns=[...]` and those columns are still described by name and type, but no value from them reaches the planning prompt, the schema block, the evidence tables or the interpretation prompt.
 - `investigate()` never raises on expected failures. It returns a report whose `status` is `ok`, `partial` (findings computed but interpretation failed), `unsupported` or `error`, so a UI can always render something honest.
 - The report separates **Findings (computed in Python)** from the **Answer (AI interpretation)** in distinct sections, and flags any statistical-looking number in the narrative that cannot be matched to a computed value.
 
 ### Run the evaluation
 
-The scoring script plans every question in `eval/questions.json` and compares the chosen tool and parameters with the hand-checked expectations. It measures planning only (tool selection), which is the part the exam set was designed to test.
+The scoring script runs the planning stage against every question in `eval/questions.json` and scores four independent things from the run's own computed findings: **tool accuracy**, **parameter accuracy**, **refusal accuracy** and **answer accuracy**. Because the tools are deterministic, answer accuracy can be measured from a plan-only run, so the whole suite costs one model call per question. It also records latency and token usage.
 
 ```powershell
 .\.venv\Scripts\python.exe eval\score_investigator.py
 ```
 
-Use `--model <name>` to score a different model and `--out <path>` to choose where the report is written. The results are recorded in `eval/baseline.md`.
+| Flag | Purpose |
+|---|---|
+| `--model <name>` | Score a different model. |
+| `--out <path>` | Where to write the Markdown report. |
+| `--interpret N` | Also run the narrative stage on the first N questions, to measure **faithfulness**. |
+| `--pause <seconds>` | Delay between questions (default 12, for the free-tier rate limit). |
+| `--price-in` / `--price-out` | USD per 1M tokens, for a paid-tier cost estimate. |
 
-> **A full investigation costs two requests** (one to plan, one to interpret). On the free tier `gemini-3.6-flash` allows 20 requests per day, so roughly ten complete investigations per day. The scorer pauses between questions to respect the per-minute limit.
+Exit codes: `0` all passed, `2` some failed, `3` the run stopped early on a rate limit. The results, the failure analysis and the fixes are written up in `eval/evaluation.md`.
+
+> **A full investigation costs two requests** (one to plan, one to interpret). On the free tier `gemini-3.6-flash` allows 20 requests per day, so roughly ten complete investigations per day. The scorer pauses between questions to respect the per-minute limit, and treats a daily-quota 429 as a stopped run rather than as a set of failures.
 
 ## Planned features
 
@@ -114,17 +126,22 @@ data-detective/
 │   ├── tools.py            # Predefined analytical tools + registry
 │   ├── llm_client.py       # Isolated Gemini REST client (the only LLM code)
 │   ├── investigator.py     # Agent: plan -> validate -> execute -> evidence report
+│   ├── evaluation.py       # Offline scoring: metrics, answer checks, usage recording
 │   └── visualizer.py       # Planned: charts from computed results
 ├── tests/
 │   ├── test_profiler.py    # Unit tests for src/profiler.py
 │   ├── test_tools.py       # Unit tests for src/tools.py
 │   ├── test_eval_set.py    # Guards eval/questions.json against drift
 │   ├── test_llm_client.py  # Unit tests for src/llm_client.py (no network)
-│   └── test_investigator.py# Unit tests for src/investigator.py (no network)
+│   ├── test_investigator.py# Unit tests for src/investigator.py (no network)
+│   ├── test_evaluation.py  # Unit tests for src/evaluation.py (no network)
+│   └── test_safety.py      # Sandbox, grounding, redaction and honesty guardrails
 ├── eval/
-│   ├── questions.json      # Fixed question set with expected answers
-│   ├── score_investigator.py  # Scores tool selection against the question set
-│   ├── baseline.md         # Primary-model baseline, diagnosis and fix
+│   ├── questions.json      # Fixed question set with expected answers + answer checks
+│   ├── score_investigator.py  # Runs the question set and writes a metrics report
+│   ├── evaluation.md       # Day 4: approach, metrics, failure analysis, fixes
+│   ├── evaluation-gemini-3.1-flash-lite.md  # Full backup-model run (12/15)
+│   ├── baseline.md         # Day 3 primary-model baseline, diagnosis and fix
 │   ├── baseline-gemini-3.6-flash-prefix.md  # Raw pre-fix 9/15 run (for the record)
 │   └── baseline-gemini-3.1-flash-lite.md  # Backup-model baseline (11/15)
 ├── data/                   # Sample datasets (never commit private data)
@@ -234,6 +251,8 @@ Files are processed in memory. Uploaded datasets are not written to disk or perm
 
 - Do not upload confidential or personally identifiable information during development.
 - Validate uploaded files before processing.
+- Only the dataset's schema and profile are sent to the model, never whole columns.
+- Sensitive columns can be redacted with `redact_columns` so no value from them reaches the model in any prompt.
 - Do not permanently store user datasets.
 - Use public datasets in accordance with their individual licences.
 - Never commit datasets or API credentials.
@@ -248,6 +267,10 @@ Files are processed in memory. Uploaded datasets are not written to disk or perm
 - [x] Isolated Gemini REST client with typed error handling and tests
 - [x] LLM planning with structured tool selection
 - [x] Evidence validation and investigation report
+- [x] Evaluation harness with tool, parameter, refusal and answer accuracy
+- [x] Latency, token and cost measurement
+- [x] Safety guardrails: sandbox, column grounding, PII redaction, invented-number check
+- [x] Prompt iteration driven by evaluation failures
 - [ ] Visualisations
 - [ ] Wire the investigator into the Streamlit interface
 - [ ] Deployment

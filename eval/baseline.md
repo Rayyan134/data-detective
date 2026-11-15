@@ -5,6 +5,11 @@
 - Mode: planning only — the chosen tool and its parameters are scored, the narrative interpretation is not
 - Scorer: `eval/score_investigator.py`
 
+> **Day 4.** This file records the Day 3 baseline. The evaluation was extended on
+> Day 4 to measure tool, parameter, refusal and answer accuracy plus faithfulness,
+> and two planning-prompt gaps found here were fixed. See `eval/evaluation.md`
+> for the current approach, metrics and failure analysis.
+
 ## Primary model: `gemini-3.6-flash` — 9 / 15 (pre-normalisation)
 
 The first clean full run of the primary model scored **9 / 15**. The raw table
@@ -78,10 +83,11 @@ Two of the six failing questions were re-run live on 2026-11-15:
 
 The free tier allows only **20 requests per day** for `gemini-3.6-flash`, and
 all 20 were used on 2026-11-15 (one full 15-question run plus diagnostics).
-The full post-fix score will be recorded here by re-running:
+The full post-fix score will be recorded in
+`eval/evaluation-gemini-3.6-flash.md` by re-running:
 
 ```
-.\.venv\Scripts\python.exe eval\score_investigator.py
+.\.venv\Scripts\python.exe eval\score_investigator.py --out eval\evaluation-gemini-3.6-flash.md --interpret 3
 ```
 
 The pre-fix raw output is kept as `eval/baseline-gemini-3.6-flash-prefix.md`.
@@ -96,6 +102,13 @@ detail is in `eval/baseline-gemini-3.1-flash-lite.md`.
   (wrong `top_n`) and **Q15** (no explicit refusal for an unsupported question).
 - This run predates the normalisation fix, and the lite model is less capable
   than the primary model, so treat it as a conservative lower bound.
+
+> **Day 4 update.** Q07 was an over-strict expectation in the exam, not a model
+> error: `top_n` does not change the answer for three products. Relaxing it makes
+> the recorded run **12 / 15 (80%)**. The two real failure modes behind Q02/Q13
+> and Q15 were fixed in the planning prompt on Day 4; the full analysis is in
+> `eval/evaluation.md`.
+
 
 ## What the baseline measures
 
